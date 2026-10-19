@@ -37,3 +37,28 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   joins a level's writes. Tests in `u_flight_test.go` (a parrot with a
   certificate, with a chain past a record, without one; HelloGolang; Go's
   client; the keys the flight goes under); 8 mutants, all killed.
+
+- **False Start, as Chrome's** (`Config.FalseStart`, `u_false_start.go`,
+  `clientHandshakeState.readServerFlight` and `complete` in
+  `handshake_client.go`, `falseStarted` in `Conn`'s and `UConn`'s
+  `handshakeContext`, `Read` and `Write`): a client set to it whose TLS 1.2
+  handshake allows it, on the connection's first handshake, a full one, with
+  an ECDHE key exchange, an AEAD and a protocol ALPN negotiated
+  (`falseStarts`, BoringSSL's `can_false_start`), returns from Handshake
+  once its Finished is out and may write; the first Read reads the server's
+  session ticket, ChangeCipherSpec and Finished (`finishFalseStart`, under
+  the handshake's lock and `c.in`), checks the Finished, keeps the session,
+  and only then reads application data. A Finished that does not check ends
+  the connection, Handshake says so from then on, and nothing more is sent.
+  Until it is read, ConnectionState says the handshake is not complete and
+  keying material cannot be exported. Off by default: Go's client and a
+  parrot not set to it wait as before. Chromium sets
+  SSL_MODE_ENABLE_FALSE_START for every connection; Chrome 155.0.8059.85 was
+  measured on 2026-10-19 sending its request before the server's Finished
+  with ECDHE and AES-GCM or ChaCha20-Poly1305 over h2 and http/1.1, and
+  waiting without ALPN, with a CBC suite and with an RSA key exchange. Tests
+  in `u_false_start_test.go` (a Conn and a Chrome parrot each: where it false
+  starts and where it waits, a Finished that does not check, reads and writes
+  while it finishes, two handshakes at once, the session resumed, the rule
+  by case); 27 mutants, 26 killed, and one equivalent (`finishFalseStart`'s
+  first look at `falseStarted` before the lock, which saves taking it).
