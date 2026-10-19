@@ -14,8 +14,8 @@ import (
 	"io"
 	"slices"
 
-	"github.com/bogdanfinn/utls/internal/fips140tls"
-	"github.com/bogdanfinn/utls/internal/tls13"
+	"github.com/igor-lemon/utls/internal/fips140tls"
+	"github.com/igor-lemon/utls/internal/tls13"
 	"github.com/klauspost/compress/zstd"
 	"github.com/molecule-man/go-brrr"
 )
@@ -583,7 +583,7 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 
 func (c *UConn) echTranscriptMsg(outer *clientHelloMsg, echCtx *echClientContext) (err error) {
 	// Recreate the inner ClientHello from its compressed form using server's decodeInnerClientHello function.
-	// See https://github.com/bogdanfinn/utls/blob/e430876b1d82fdf582efc57f3992d448e7ab3d8a/ech.go#L276-L283
+	// See https://github.com/igor-lemon/utls/blob/e430876b1d82fdf582efc57f3992d448e7ab3d8a/ech.go#L276-L283
 	encodedInner := echCtx.encodedInner
 	if encodedInner == nil {
 		encodedInner, err = encodeInnerClientHelloReorderOuterExts(echCtx.innerHello, int(echCtx.config.MaxNameLength), c.extensionsList())

@@ -34,10 +34,10 @@ import (
 
 	"golang.org/x/crypto/cryptobyte"
 
-	"github.com/bogdanfinn/utls/internal/boring"
-	"github.com/bogdanfinn/utls/internal/cryptotest"
-	"github.com/bogdanfinn/utls/internal/fips140tls"
-	"github.com/bogdanfinn/utls/internal/testenv"
+	"github.com/igor-lemon/utls/internal/boring"
+	"github.com/igor-lemon/utls/internal/cryptotest"
+	"github.com/igor-lemon/utls/internal/fips140tls"
+	"github.com/igor-lemon/utls/internal/testenv"
 )
 
 var testTime = func() time.Time { return time.Unix(1476984729, 0) }

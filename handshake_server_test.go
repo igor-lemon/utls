@@ -28,8 +28,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bogdanfinn/utls/internal/fips140tls"
-	"github.com/bogdanfinn/utls/internal/testenv"
+	"github.com/igor-lemon/utls/internal/fips140tls"
+	"github.com/igor-lemon/utls/internal/testenv"
 )
 
 func testClientHello(t *testing.T, serverConfig *Config, m handshakeMessage) {

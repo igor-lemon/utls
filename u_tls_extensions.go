@@ -11,7 +11,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/bogdanfinn/utls/dicttls"
+	"github.com/igor-lemon/utls/dicttls"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -860,7 +860,7 @@ func (e *SCTExtension) writeToUConn(uc *UConn) error {
 	return nil
 }
 
-// why 6 ? https://github.com/bogdanfinn/utls/compare/master...Mathtin:utls:master
+// why 6 ? https://github.com/igor-lemon/utls/compare/master...Mathtin:utls:master
 func (e *SCTExtension) Len() int {
 	return 4
 }
@@ -1443,7 +1443,7 @@ func (e *PSKKeyExchangeModesExtension) Write(b []byte) (int, error) {
 	// RFC 8446, Section 4.2.9
 	// TODO: PSK Modes have their own form of GREASE-ing which is not currently implemented
 	// the current functionality will NOT re-GREASE/re-randomize these values when using a fingerprinted spec
-	// https://github.com/bogdanfinn/utls/pull/58#discussion_r522354105
+	// https://github.com/igor-lemon/utls/pull/58#discussion_r522354105
 	// https://tools.ietf.org/html/draft-ietf-tls-grease-01#section-2
 	pskModes := []uint8{}
 	if !readUint8LengthPrefixed(&extData, &pskModes) {

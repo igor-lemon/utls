@@ -10,7 +10,7 @@ import (
 	"crypto/hkdf"
 	fips140 "hash"
 
-	"github.com/bogdanfinn/utls/internal/byteorder"
+	"github.com/igor-lemon/utls/internal/byteorder"
 )
 
 // We don't set the service indicator in this package but we delegate that to
