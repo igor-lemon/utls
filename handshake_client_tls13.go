@@ -153,6 +153,11 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 		return err
 	}
 	// [UTLS SECTION START]
+	// A parrot's second flight goes in as few records as it fits in, as a
+	// browser's TLS stack writes it (BoringSSL's, NSS's; writeFlight); Go's
+	// own client, and HelloGolang, a record each, as crypto/tls. Over QUIC,
+	// whose crypto data of a level is one stream, it changes nothing.
+	c.utls.packingFlight = hs.uconn != nil && hs.uconn.ClientHelloID.Str() != HelloGolang.Str()
 	if err := hs.serverFinishedReceived(); err != nil {
 		return err
 	}
@@ -1034,6 +1039,12 @@ func (hs *clientHandshakeStateTLS13) sendClientFinished() error {
 	if _, err := hs.c.writeHandshakeRecord(finished, hs.transcript); err != nil {
 		return err
 	}
+	// [UTLS SECTION START]
+	// Under the handshake's keys, before they give way to the application's.
+	if err := c.writeFlight(); err != nil {
+		return err
+	}
+	// [UTLS SECTION END]
 
 	c.out.setTrafficSecret(hs.suite, QUICEncryptionLevelApplication, hs.trafficSecret)
 

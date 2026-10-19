@@ -1057,6 +1057,12 @@ func (c *Conn) writeHandshakeRecord(msg handshakeMessage, transcript transcriptH
 	if transcript != nil {
 		transcript.Write(data)
 	}
+	// [UTLS SECTION BEGIN]
+	if c.utls.packingFlight {
+		c.utls.pendingFlight = append(c.utls.pendingFlight, data...)
+		return len(data), nil
+	}
+	// [UTLS SECTION END]
 
 	return c.writeRecordLocked(recordTypeHandshake, data)
 }
