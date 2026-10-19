@@ -853,6 +853,26 @@ type utlsConnExtraFields struct {
 	applicationSettingsCodepoint uint16
 
 	sessionController *sessionController
+
+	// packingFlight has writeHandshakeRecord put each handshake message of
+	// the client's second flight in pendingFlight rather than in a record of
+	// its own, until writeFlight writes them together, as BoringSSL writes a
+	// flight.
+	packingFlight bool
+	pendingFlight []byte
+}
+
+// writeFlight writes the handshake messages packed since packing began
+// (packingFlight), in records of as many bytes as a record may carry, as
+// BoringSSL packs a flight: Chrome sends its EncryptedExtensions and Finished
+// in one record. Packing stops; nothing packed writes nothing.
+func (c *Conn) writeFlight() error {
+	c.out.Lock()
+	defer c.out.Unlock()
+	flight := c.utls.pendingFlight
+	c.utls.packingFlight, c.utls.pendingFlight = false, nil
+	_, err := c.writeRecordLocked(recordTypeHandshake, flight)
+	return err
 }
 
 // Read reads data from the connection.

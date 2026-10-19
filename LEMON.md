@@ -21,3 +21,19 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   passes.
 
 ## Patches
+
+- **A parrot's second flight in as few records as it fits in**
+  (`handshake_client_tls13.go`, `Conn.writeHandshakeRecord`,
+  `Conn.writeFlight` in `u_conn.go`): a TLS 1.3 client handshake driven by a
+  `UConn` of any ClientHelloID but HelloGolang packs the messages of its
+  second flight (its EncryptedExtensions of ALPS, Certificate,
+  CertificateVerify, Finished) one after another and writes them together,
+  under the handshake's keys, in records of as many bytes as a record
+  carries, as BoringSSL and NSS write a flight; Go's own client and
+  HelloGolang write a record each, as crypto/tls does. Chrome 155 sends its
+  EncryptedExtensions and Finished in one record (tls-forge's bench, every
+  `alps-*` scenario that negotiated ALPS, measured four times); utls wrote
+  them in two. Over QUIC it changes nothing: `quicWriteCryptoData` already
+  joins a level's writes. Tests in `u_flight_test.go` (a parrot with a
+  certificate, with a chain past a record, without one; HelloGolang; Go's
+  client; the keys the flight goes under); 8 mutants, all killed.
