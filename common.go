@@ -753,6 +753,18 @@ type Config struct {
 	// By default, utls throws an exception in such scenarios. Set this to true to skip the resumption and suppress the exception.
 	PreferSkipResumptionOnNilExtension bool // [uTLS]
 
+	// FalseStart lets a client whose TLS 1.2 handshake allows it send
+	// application data right after its Finished, before the server's, as
+	// Chrome does (BoringSSL's SSL_MODE_ENABLE_FALSE_START): on the
+	// connection's first handshake, a full one, with an ECDHE key exchange,
+	// an AEAD cipher suite and a protocol ALPN negotiated. Handshake then
+	// returns once the client's Finished is sent, and the first Read reads
+	// the rest, the server's session ticket, ChangeCipherSpec and Finished,
+	// whose Finished it checks before it reads any application data. Until
+	// then ConnectionState says the handshake is not complete, and keying
+	// material cannot be exported. [uTLS]
+	FalseStart bool
+
 	// CipherSuites is a list of enabled TLS 1.0–1.2 cipher suites. The order of
 	// the list is ignored. Note that TLS 1.3 ciphersuites are not configurable.
 	//
@@ -1020,6 +1032,7 @@ func (c *Config) Clone() *Config {
 		InsecureSkipTimeVerify:              c.InsecureSkipTimeVerify,
 		InsecureServerNameToVerify:          c.InsecureServerNameToVerify,
 		OmitEmptyPsk:                        c.OmitEmptyPsk,
+		FalseStart:                          c.FalseStart,
 		CipherSuites:                        c.CipherSuites,
 		PreferServerCipherSuites:            c.PreferServerCipherSuites,
 		SessionTicketsDisabled:              c.SessionTicketsDisabled,

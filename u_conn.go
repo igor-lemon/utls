@@ -321,7 +321,7 @@ func (c *UConn) handshakeContext(ctx context.Context) (ret error) {
 	// Fast sync/atomic-based exit if there is no handshake in flight and the
 	// last one succeeded without an error. Avoids the expensive context setup
 	// and mutex for most Read and Write calls.
-	if c.isHandshakeComplete.Load() {
+	if c.isHandshakeComplete.Load() || c.falseStarted.Load() {
 		return nil
 	}
 
@@ -367,7 +367,7 @@ func (c *UConn) handshakeContext(ctx context.Context) (ret error) {
 	if err := c.handshakeErr; err != nil {
 		return err
 	}
-	if c.isHandshakeComplete.Load() {
+	if c.isHandshakeComplete.Load() || c.falseStarted.Load() {
 		return nil
 	}
 
@@ -391,7 +391,7 @@ func (c *UConn) handshakeContext(ctx context.Context) (ret error) {
 		c.flush()
 	}
 
-	if c.handshakeErr == nil && !c.isHandshakeComplete.Load() {
+	if c.handshakeErr == nil && !c.isHandshakeComplete.Load() && !c.falseStarted.Load() {
 		c.handshakeErr = errors.New("tls: internal error: handshake should have had a result")
 	}
 	if c.handshakeErr != nil && c.isHandshakeComplete.Load() {
@@ -451,7 +451,7 @@ func (c *UConn) Write(b []byte) (int, error) {
 		return 0, err
 	}
 
-	if !c.isHandshakeComplete.Load() {
+	if !c.isHandshakeComplete.Load() && !c.falseStarted.Load() {
 		return 0, alertInternalError
 	}
 
@@ -889,6 +889,9 @@ func (c *UConn) Read(b []byte) (int, error) {
 		// Put this after Handshake, in case people were calling
 		// Read(nil) for the side effect of the Handshake.
 		return 0, nil
+	}
+	if err := c.finishFalseStart(); err != nil {
+		return 0, err
 	}
 
 	c.in.Lock()

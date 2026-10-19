@@ -645,20 +645,36 @@ func (hs *clientHandshakeState) handshake() error {
 			return err
 		}
 		c.clientFinishedIsFirst = true
-		if err := hs.readSessionTicket(); err != nil {
-			return err
+		// [uTLS] The first Read reads the server's flight.
+		if hs.falseStarts() {
+			c.falseStart = hs
+			c.falseStarted.Store(true)
+			return nil
 		}
-		if err := hs.readFinished(c.serverFinished[:]); err != nil {
+		if err := hs.readServerFlight(); err != nil {
 			return err
 		}
 	}
+	return hs.complete()
+}
+
+// readServerFlight reads what a server sends after a client's Finished in a
+// full handshake: its session ticket, ChangeCipherSpec and Finished. [uTLS]
+func (hs *clientHandshakeState) readServerFlight() error {
+	if err := hs.readSessionTicket(); err != nil {
+		return err
+	}
+	return hs.readFinished(hs.c.serverFinished[:])
+}
+
+// complete keeps the session and marks the handshake complete. [uTLS]
+func (hs *clientHandshakeState) complete() error {
 	if err := hs.saveSessionTicket(); err != nil {
 		return err
 	}
-
+	c := hs.c
 	c.ekm = ekmFromMasterSecret(c.vers, hs.suite, hs.masterSecret, hs.hello.random, hs.serverHello.random)
 	c.isHandshakeComplete.Store(true)
-
 	return nil
 }
 

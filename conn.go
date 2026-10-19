@@ -35,6 +35,12 @@ type Conn struct {
 	// application data (i.e. is not currently processing a handshake).
 	// isHandshakeComplete is true implies handshakeErr == nil.
 	isHandshakeComplete atomic.Bool
+	// falseStarted is true while a client's TLS 1.2 handshake has sent its
+	// Finished and not read the server's (Config.FalseStart): application
+	// data may be written, and the first Read finishes the handshake with
+	// falseStart (finishFalseStart). [uTLS]
+	falseStarted atomic.Bool
+	falseStart   *clientHandshakeState
 	// constant after handshake; protected by handshakeMutex
 	handshakeMutex sync.Mutex
 	handshakeErr   error   // error resulting from handshake
@@ -1233,7 +1239,7 @@ func (c *Conn) Write(b []byte) (int, error) {
 		return 0, err
 	}
 
-	if !c.isHandshakeComplete.Load() {
+	if !c.isHandshakeComplete.Load() && !c.falseStarted.Load() {
 		return 0, alertInternalError
 	}
 
@@ -1393,6 +1399,9 @@ func (c *Conn) Read(b []byte) (int, error) {
 		// Read(nil) for the side effect of the Handshake.
 		return 0, nil
 	}
+	if err := c.finishFalseStart(); err != nil {
+		return 0, err
+	}
 
 	c.in.Lock()
 	defer c.in.Unlock()
@@ -1528,7 +1537,7 @@ func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
 	// Fast sync/atomic-based exit if there is no handshake in flight and the
 	// last one succeeded without an error. Avoids the expensive context setup
 	// and mutex for most Read and Write calls.
-	if c.isHandshakeComplete.Load() {
+	if c.isHandshakeComplete.Load() || c.falseStarted.Load() {
 		return nil
 	}
 
@@ -1574,7 +1583,7 @@ func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
 	if err := c.handshakeErr; err != nil {
 		return err
 	}
-	if c.isHandshakeComplete.Load() {
+	if c.isHandshakeComplete.Load() || c.falseStarted.Load() {
 		return nil
 	}
 
@@ -1590,7 +1599,7 @@ func (c *Conn) handshakeContext(ctx context.Context) (ret error) {
 		c.flush()
 	}
 
-	if c.handshakeErr == nil && !c.isHandshakeComplete.Load() {
+	if c.handshakeErr == nil && !c.isHandshakeComplete.Load() && !c.falseStarted.Load() {
 		c.handshakeErr = errors.New("tls: internal error: handshake should have had a result")
 	}
 	if c.handshakeErr != nil && c.isHandshakeComplete.Load() {
@@ -1671,6 +1680,9 @@ func (c *Conn) connectionStateLocked() ConnectionState {
 		}
 	} else {
 		state.ekm = c.ekm
+	}
+	if c.falseStarted.Load() {
+		state.ekm = noEKMDuringFalseStart // [uTLS]
 	}
 	state.ECHAccepted = c.echAccepted
 	// [UTLS SECTION START]
