@@ -104,7 +104,7 @@ func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateM
 	rawMsg[3] = uint8(m.uncompressedLength)
 
 	n, err := io.ReadFull(decompressed, rawMsg[4:])
-	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+	if err != nil && !errors.Is(err, io.EOF) {
 		c.sendAlert(alertBadCertificate)
 		return nil, err
 	}
