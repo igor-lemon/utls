@@ -2,8 +2,11 @@ package tls
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -86,4 +89,67 @@ func TestChromeRejectsUnsolicitedEncryptedExtensions(t *testing.T) {
 		a.Close()
 		b.Close()
 	}
+}
+
+// A socket can fail one write and later accept another. The first record has
+// consumed its nonce even when zero bytes escaped. A later alert would have
+// a sequence the peer cannot infer; neither partial nor zero writes permit it.
+func TestChromeDoesNotSendAlertAfterFailedRecord(t *testing.T) {
+	for _, partial := range []bool{false, true} {
+		t.Run(fmt.Sprintf("partial=%v", partial), func(t *testing.T) {
+			raw, peer := net.Pipe()
+			raw.SetDeadline(time.Now().Add(2 * time.Second))
+			peer.SetDeadline(time.Now().Add(2 * time.Second))
+			wrapped := &chromeFailedRecordConn{Conn: raw, partial: partial}
+			serverConfig := testConfig.Clone()
+			serverConfig.MinVersion, serverConfig.MaxVersion = VersionTLS13, VersionTLS13
+			server := Server(peer, serverConfig)
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				defer peer.Close()
+				if err := server.Handshake(); err != nil {
+					return
+				}
+				io.Copy(io.Discard, server)
+			}()
+			cfg := testConfig.Clone()
+			cfg.InsecureSkipVerify = true
+			cfg.MinVersion, cfg.MaxVersion = VersionTLS13, VersionTLS13
+			cfg.ChromeBehavior = true
+			client := Client(wrapped, cfg)
+			if err := client.Handshake(); err != nil {
+				t.Fatal(err)
+			}
+			wrapped.fail.Store(true)
+			if _, err := client.Write([]byte("owned payload")); !errors.Is(err, os.ErrDeadlineExceeded) {
+				t.Fatalf("failed write: %v", err)
+			}
+			before := wrapped.writes.Load()
+			_ = client.Close()
+			if wrapped.writes.Load() != before {
+				t.Fatal("TLS wrote after a failed record,creating a sequence gap")
+			}
+			<-done
+		})
+	}
+}
+
+type chromeFailedRecordConn struct {
+	net.Conn
+	fail    atomic.Bool
+	partial bool
+	writes  atomic.Int32
+}
+
+func (c *chromeFailedRecordConn) Write(p []byte) (int, error) {
+	c.writes.Add(1)
+	if c.fail.Swap(false) {
+		if c.partial {
+			n, _ := c.Conn.Write(p[:7])
+			return n, os.ErrDeadlineExceeded
+		}
+		return 0, os.ErrDeadlineExceeded
+	}
+	return c.Conn.Write(p)
 }
