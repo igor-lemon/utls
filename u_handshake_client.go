@@ -102,7 +102,11 @@ func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateM
 
 	n, err := io.ReadFull(decompressed, rawMsg[4:])
 	if err != nil && !errors.Is(err, io.EOF) {
-		c.sendAlert(alertBadCertificate)
+		if c.config.ChromeBehavior {
+			c.sendAlert(alertDecodeError)
+		} else {
+			c.sendAlert(alertBadCertificate)
+		}
 		return nil, err
 	}
 	if n < len(rawMsg)-4 {

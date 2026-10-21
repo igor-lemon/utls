@@ -429,7 +429,22 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 	if cacheKey == "" {
 		return nil, nil, nil, nil
 	}
-	cs, ok := c.config.ClientSessionCache.Get(cacheKey)
+	var cs *ClientSessionState
+	var ok bool
+	if c.config.ChromeBehavior {
+		if cache, atomic := c.config.ClientSessionCache.(interface {
+			Take(string) (*ClientSessionState, bool)
+		}); atomic {
+			cs, ok = cache.Take(cacheKey)
+		} else {
+			cs, ok = c.config.ClientSessionCache.Get(cacheKey)
+			if ok && cs != nil && cs.session.version == VersionTLS13 {
+				c.config.ClientSessionCache.Put(cacheKey, nil)
+			}
+		}
+	} else {
+		cs, ok = c.config.ClientSessionCache.Get(cacheKey)
+	}
 	if !ok || cs == nil {
 		return nil, nil, nil, nil
 	}
@@ -535,7 +550,7 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 	ticketAge := c.config.time().Sub(time.Unix(int64(session.createdAt), 0))
 	identity := pskIdentity{
 		label:               session.ticket,
-		obfuscatedTicketAge: uint32(ticketAge/time.Millisecond) + session.ageAdd,
+		obfuscatedTicketAge: c.ticketAge(ticketAge) + session.ageAdd,
 	}
 	hello.pskIdentities = []pskIdentity{identity}
 	hello.pskBinders = [][]byte{make([]byte, cipherSuite.hash.Size())}
@@ -1383,4 +1398,11 @@ func computeAndUpdatePSK(m *clientHelloMsg, binderKey []byte, transcript hash.Ha
 	transcript.Write(helloBytes)
 	pskBinders := [][]byte{finishedHash(binderKey, transcript)}
 	return m.updateBinders(pskBinders)
+}
+
+func (c *Conn) ticketAge(age time.Duration) uint32 {
+	if c.config.ChromeBehavior {
+		return uint32(age/time.Second) * 1000
+	}
+	return uint32(age / time.Millisecond)
 }

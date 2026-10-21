@@ -367,7 +367,7 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 		if pskSuite.hash == hs.suite.hash {
 			// Update binders and obfuscated_ticket_age.
 			ticketAge := c.config.time().Sub(time.Unix(int64(hs.session.createdAt), 0))
-			hello.pskIdentities[0].obfuscatedTicketAge = uint32(ticketAge/time.Millisecond) + hs.session.ageAdd
+			hello.pskIdentities[0].obfuscatedTicketAge = c.ticketAge(ticketAge) + hs.session.ageAdd
 
 			transcript := hs.suite.hash.New()
 			transcript.Write([]byte{typeMessageHash, 0, 0, uint8(len(chHash))})

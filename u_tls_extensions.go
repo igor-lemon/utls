@@ -131,13 +131,14 @@ func (e *NPNExtension) Read(b []byte) (int, error) {
 
 // SNIExtension implements server_name (0)
 type SNIExtension struct {
-	ServerName string // not an array because go crypto/tls doesn't support multiple SNIs
+	ServerName     string // not an array because go crypto/tls doesn't support multiple SNIs
+	chromeBehavior bool
 }
 
 func (e *SNIExtension) Len() int {
 	// Literal IP addresses, absolute FQDNs, and empty strings are not permitted as SNI values.
 	// See RFC 6066, Section 3.
-	hostName := hostnameInSNI(e.ServerName)
+	hostName := e.hostname()
 	if len(hostName) == 0 {
 		return 0
 	}
@@ -147,7 +148,7 @@ func (e *SNIExtension) Len() int {
 func (e *SNIExtension) Read(b []byte) (int, error) {
 	// Literal IP addresses, absolute FQDNs, and empty strings are not permitted as SNI values.
 	// See RFC 6066, Section 3.
-	hostName := hostnameInSNI(e.ServerName)
+	hostName := e.hostname()
 	if len(hostName) == 0 {
 		return 0, io.EOF
 	}
@@ -209,10 +210,11 @@ func (e *SNIExtension) Write(b []byte) (int, error) {
 }
 
 func (e *SNIExtension) writeToUConn(uc *UConn) error {
+	e.chromeBehavior = uc.config.ChromeBehavior
 	if uc.config.EncryptedClientHelloConfigList == nil { // with ech, e.ServerName is the outer public name and should not be copied
 		uc.config.ServerName = e.ServerName
 	}
-	hostName := hostnameInSNI(e.ServerName)
+	hostName := e.hostname()
 	uc.HandshakeState.Hello.ServerName = hostName
 
 	return nil
@@ -1952,4 +1954,13 @@ func (e *FakeDelegatedCredentialsExtension) UnmarshalJSON(data []byte) error {
 		}
 	}
 	return nil
+}
+
+// Chromium preserves a terminal dot on DNS names;IP literals still carry no SNI.
+func (e *SNIExtension) hostname() string {
+	normal := hostnameInSNI(e.ServerName)
+	if e.chromeBehavior && normal != "" {
+		return e.ServerName
+	}
+	return normal
 }

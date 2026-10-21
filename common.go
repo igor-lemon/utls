@@ -765,6 +765,10 @@ type Config struct {
 	// material cannot be exported. [uTLS]
 	FalseStart bool
 
+	// ChromeBehavior enables measured Chromium session and message policies.
+	// Certificate verification remains governed by the normal verification fields.
+	ChromeBehavior bool
+
 	// CipherSuites is a list of enabled TLS 1.0–1.2 cipher suites. The order of
 	// the list is ignored. Note that TLS 1.3 ciphersuites are not configurable.
 	//
@@ -1033,6 +1037,7 @@ func (c *Config) Clone() *Config {
 		InsecureServerNameToVerify:          c.InsecureServerNameToVerify,
 		OmitEmptyPsk:                        c.OmitEmptyPsk,
 		FalseStart:                          c.FalseStart,
+		ChromeBehavior:                      c.ChromeBehavior,
 		CipherSuites:                        c.CipherSuites,
 		PreferServerCipherSuites:            c.PreferServerCipherSuites,
 		SessionTicketsDisabled:              c.SessionTicketsDisabled,
@@ -1876,4 +1881,23 @@ func fipsAllowCert(c *x509.Certificate) bool {
 	}
 
 	return false
+}
+
+// Take removes a TLS1.3 ticket atomically,as Chromium consumes an offered ticket.
+// A TLS1.2 session remains reusable.
+func (c *lruSessionCache) Take(key string) (*ClientSessionState, bool) {
+	c.Lock()
+	defer c.Unlock()
+	e, ok := c.m[key]
+	if !ok {
+		return nil, false
+	}
+	v := e.Value.(*lruSessionCacheEntry).state
+	if v != nil && v.session.version == VersionTLS13 {
+		c.q.Remove(e)
+		delete(c.m, key)
+	} else {
+		c.q.MoveToFront(e)
+	}
+	return v, v != nil
 }

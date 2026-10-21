@@ -996,6 +996,11 @@ func (c *Conn) writeRecordLocked(typ recordType, data []byte) (int, error) {
 	if c.isClient && c.utls.failedWrite != nil {
 		return 0, c.utls.failedWrite
 	}
+	if typ == recordTypeApplicationData && c.utls.pendingKeyUpdate {
+		if err := c.sendPendingKeyUpdate(); err != nil {
+			return 0, err
+		}
+	}
 	if c.quic != nil {
 		if typ != recordTypeHandshake {
 			return 0, errors.New("tls: internal error: sending non-handshake message to QUIC transport")
@@ -1212,6 +1217,11 @@ func (c *Conn) unmarshalHandshakeMessage(data []byte, transcript transcriptHash)
 	// so pass in a fresh copy that won't be overwritten.
 	data = append([]byte(nil), data...)
 
+	if c.isClient && c.config.ChromeBehavior && data[0] == typeEncryptedExtensions {
+		if err := c.validateServerExtensions(data); err != nil {
+			return nil, c.in.setErrorLocked(err)
+		}
+	}
 	if !m.unmarshal(data) {
 		return nil, c.in.setErrorLocked(c.sendAlert(alertUnexpectedMessage))
 	}
@@ -1383,6 +1393,10 @@ func (c *Conn) handleKeyUpdate(keyUpdate *keyUpdateMsg) error {
 		c.out.Lock()
 		defer c.out.Unlock()
 
+		if c.config.ChromeBehavior {
+			c.utls.pendingKeyUpdate = true
+			return nil
+		}
 		msg := &keyUpdateMsg{}
 		msgBytes, err := msg.marshal()
 		if err != nil {
