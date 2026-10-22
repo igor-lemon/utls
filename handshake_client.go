@@ -963,7 +963,11 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 	}
 
 	if err := checkALPN(hs.hello.alpnProtocols, hs.serverHello.alpnProtocol, false); err != nil {
-		c.sendAlert(alertUnsupportedExtension)
+		alert := alertUnsupportedExtension
+		if c.config.ChromeBehavior && len(hs.hello.alpnProtocols) > 0 && hs.serverHello.alpnProtocol != "" {
+			alert = alertIllegalParameter
+		}
+		c.sendAlert(alert)
 		return false, err
 	}
 	c.clientProtocol = hs.serverHello.alpnProtocol
