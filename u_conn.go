@@ -376,13 +376,12 @@ func (c *UConn) handshakeContext(ctx context.Context) (ret error) {
 
 	// [uTLS section begins]
 	if c.isClient {
-		err := c.BuildHandshakeState()
-		if err != nil {
-			return err
-		}
+		c.handshakeErr = c.BuildHandshakeState()
 	}
 	// [uTLS section ends]
-	c.handshakeErr = c.handshakeFn(handshakeCtx)
+	if c.handshakeErr == nil {
+		c.handshakeErr = c.handshakeFn(handshakeCtx)
+	}
 	if c.handshakeErr == nil {
 		c.handshakes++
 	} else {

@@ -769,6 +769,11 @@ type Config struct {
 	// Certificate verification remains governed by the normal verification fields.
 	ChromeBehavior bool
 
+	// QUICClientHelloSpec optionally builds a fresh QUIC ClientHello from the
+	// transport's current parameters. Only QUICClient consumes it. Certificate,
+	// Finished and TLS 1.3 checks remain the ordinary UConn checks.
+	QUICClientHelloSpec func(transportParameters []byte) (ClientHelloSpec, error)
+
 	// CipherSuites is a list of enabled TLS 1.0–1.2 cipher suites. The order of
 	// the list is ignored. Note that TLS 1.3 ciphersuites are not configurable.
 	//
@@ -1038,6 +1043,7 @@ func (c *Config) Clone() *Config {
 		OmitEmptyPsk:                        c.OmitEmptyPsk,
 		FalseStart:                          c.FalseStart,
 		ChromeBehavior:                      c.ChromeBehavior,
+		QUICClientHelloSpec:                 c.QUICClientHelloSpec,
 		CipherSuites:                        c.CipherSuites,
 		PreferServerCipherSuites:            c.PreferServerCipherSuites,
 		SessionTicketsDisabled:              c.SessionTicketsDisabled,

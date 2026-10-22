@@ -41,7 +41,8 @@ func (l QUICEncryptionLevel) String() string {
 //
 // Methods of QUICConn are not safe for concurrent use.
 type QUICConn struct {
-	conn *Conn
+	conn  *Conn
+	uconn *UConn
 
 	sessionTicketSent bool
 }
@@ -173,6 +174,12 @@ type quicState struct {
 //
 // The config's MinVersion must be at least TLS 1.3.
 func QUICClient(config *QUICConfig) *QUICConn {
+	if config.TLSConfig.QUICClientHelloSpec != nil {
+		uc := UClient(nil, config.TLSConfig, HelloCustom, false, false, false)
+		q := newQUICConn(uc.Conn, config)
+		q.uconn = uc
+		return q
+	}
 	return newQUICConn(Client(nil, config.TLSConfig), config)
 }
 
@@ -208,7 +215,18 @@ func (q *QUICConn) Start(ctx context.Context) error {
 	if q.conn.config.MinVersion < VersionTLS13 {
 		return quicError(errors.New("tls: Config MinVersion must be at least TLS 1.3"))
 	}
-	go q.conn.HandshakeContext(ctx)
+	if q.uconn != nil {
+		spec, err := q.conn.config.QUICClientHelloSpec(append([]byte(nil), q.conn.quic.transportParams...))
+		if err != nil {
+			return quicError(err)
+		}
+		if err = q.uconn.ApplyPreset(&spec); err != nil {
+			return quicError(err)
+		}
+		go q.uconn.HandshakeContext(ctx)
+	} else {
+		go q.conn.HandshakeContext(ctx)
+	}
 	if _, ok := <-q.conn.quic.blockedc; !ok {
 		return q.conn.handshakeErr
 	}
