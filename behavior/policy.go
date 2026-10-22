@@ -27,6 +27,16 @@ type spec struct {
 }
 
 var supported = map[string]spec{
+	"h3.qpack.critical_close_frame_type":    {kind: "number", max: 4294967295},
+	"h3.qpack.critical_close_reason":        {kind: "text", max: 1024},
+	"h3.qpack.draining_percent":             {kind: "number", max: 100},
+	"h3.qpack.critical_close_space":         {kind: "text", choices: []string{"application", "transport"}},
+	"h3.qpack.critical_close_code":          {kind: "number", max: 4294967295},
+	"h3.retry_unprocessed_attempts":         {kind: "number", min: 1, max: 16},
+	"h3.retry_attempts":                     {kind: "number", min: 1, max: 16},
+	"h3.retry_methods":                      {kind: "texts"},
+	"h3.retry_application_errors":           {kind: "numbers", max: 4294967295},
+	"h3.retry_transport_errors":             {kind: "numbers", max: 4294967295},
 	"h3.qpack.encoder_table_bytes":          {kind: "number", max: 1 << 20},
 	"h3.qpack.encoder_warmup_sections":      {kind: "number", max: 1024},
 	"h3.qpack.reference_base":               {kind: "text", choices: []string{"required", "insert-count"}},
@@ -269,6 +279,9 @@ func (p Policy) Validate() error {
 		case "text":
 			var v string
 			err = json.Unmarshal(raw, &v)
+			if err == nil && s.max > 0 && uint64(len(v)) > s.max {
+				err = fmt.Errorf("text exceeds %d bytes", s.max)
+			}
 			if err == nil && strings.ContainsAny(v, "\r\n\x00") {
 				err = fmt.Errorf("control byte in behavior text")
 			}
