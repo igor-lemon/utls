@@ -18,6 +18,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"github.com/igor-lemon/utls/behavior"
 	"io"
 	"net"
 	"os"
@@ -767,7 +768,8 @@ type Config struct {
 
 	// ChromeBehavior enables measured Chromium session and message policies.
 	// Certificate verification remains governed by the normal verification fields.
-	ChromeBehavior bool
+	ChromeBehavior bool // Deprecated: use explicit Behavior data.
+	Behavior       behavior.Policy
 
 	// QUICClientHelloSpec optionally builds a fresh QUIC ClientHello from the
 	// transport's current parameters. Only QUICClient consumes it. Certificate,
@@ -1043,6 +1045,7 @@ func (c *Config) Clone() *Config {
 		OmitEmptyPsk:                        c.OmitEmptyPsk,
 		FalseStart:                          c.FalseStart,
 		ChromeBehavior:                      c.ChromeBehavior,
+		Behavior:                            c.Behavior.Clone(),
 		QUICClientHelloSpec:                 c.QUICClientHelloSpec,
 		CipherSuites:                        c.CipherSuites,
 		PreferServerCipherSuites:            c.PreferServerCipherSuites,

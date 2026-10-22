@@ -3,6 +3,7 @@ package tls
 import (
 	"encoding/binary"
 	"errors"
+	"github.com/igor-lemon/utls/behavior"
 	"net"
 )
 
@@ -58,25 +59,25 @@ func (c *Conn) validateServerExtensions(data []byte) error {
 	}
 	n := int(binary.BigEndian.Uint16(data[4:6]))
 	if n != len(data)-6 {
-		return c.sendAlert(alertDecodeError)
+		return c.sendAlert(alert(c.config.Policy().Uint("tls.malformed_extension_alert")))
 	}
 	seen := map[uint16]bool{}
 	ee := data[6:]
 	for len(ee) > 0 {
 		if len(ee) < 4 {
-			return c.sendAlert(alertDecodeError)
+			return c.sendAlert(alert(c.config.Policy().Uint("tls.malformed_extension_alert")))
 		}
 		id := binary.BigEndian.Uint16(ee)
 		n := int(binary.BigEndian.Uint16(ee[2:]))
 		if n+4 > len(ee) {
-			return c.sendAlert(alertDecodeError)
+			return c.sendAlert(alert(c.config.Policy().Uint("tls.malformed_extension_alert")))
 		}
 		if !allowed[id] {
-			c.sendAlert(alertUnsupportedExtension)
+			c.sendAlert(alert(c.config.Policy().Uint("tls.unsolicited_extension_alert")))
 			return errors.New("tls: server sent an unsolicited EncryptedExtensions extension")
 		}
 		if seen[id] {
-			c.sendAlert(alertIllegalParameter)
+			c.sendAlert(alert(c.config.Policy().Uint("tls.duplicate_extension_alert")))
 			return errors.New("tls: repeated EncryptedExtensions extension")
 		}
 		seen[id] = true
@@ -109,7 +110,7 @@ func (c *Conn) sendPendingKeyUpdate() error {
 // not authorize replay of a request, failed trust verification, remote alerts,
 // TLS 1.2 False Start application writes, or cancellation.
 func (c *UConn) ChromeHandshakeRetryable() bool {
-	if !c.config.ChromeBehavior || c.quic != nil {
+	if len(c.config.Policy().Numbers("tls.retry_local_alerts")) == 0 || c.quic != nil {
 		return false
 	}
 	c.out.Lock()
@@ -119,5 +120,20 @@ func (c *UConn) ChromeHandshakeRetryable() bool {
 		return false
 	}
 	a, ok := local.Err.(alert)
-	return ok && (a == alertUnexpectedMessage || a == alertDecodeError || a == alertDecryptError || a == alertUnsupportedExtension)
+	if ok {
+		for _, id := range c.config.Policy().Numbers("tls.retry_local_alerts") {
+			if uint64(a) == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Policy resolves explicit profile data; only deprecated backend callers use legacy migration.
+func (c *Config) Policy() behavior.Policy {
+	if c == nil {
+		return nil
+	}
+	return behavior.Resolve(c.Behavior, c.ChromeBehavior)
 }

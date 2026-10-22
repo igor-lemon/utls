@@ -102,8 +102,8 @@ func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateM
 
 	n, err := io.ReadFull(decompressed, rawMsg[4:])
 	if err != nil && !errors.Is(err, io.EOF) {
-		if c.config.ChromeBehavior {
-			c.sendAlert(alertDecodeError)
+		if c.config.Policy().Has("tls.certificate_decode_alert") {
+			c.sendAlert(alert(c.config.Policy().Uint("tls.certificate_decode_alert")))
 		} else {
 			c.sendAlert(alertBadCertificate)
 		}

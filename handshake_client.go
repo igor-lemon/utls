@@ -431,7 +431,7 @@ func (c *Conn) loadSession(hello *clientHelloMsg) (
 	}
 	var cs *ClientSessionState
 	var ok bool
-	if c.config.ChromeBehavior {
+	if c.config.Policy().Flag("tls.single_use_tickets") {
 		if cache, atomic := c.config.ClientSessionCache.(interface {
 			Take(string) (*ClientSessionState, bool)
 		}); atomic {
@@ -963,11 +963,11 @@ func (hs *clientHandshakeState) processServerHello() (bool, error) {
 	}
 
 	if err := checkALPN(hs.hello.alpnProtocols, hs.serverHello.alpnProtocol, false); err != nil {
-		alert := alertUnsupportedExtension
-		if c.config.ChromeBehavior && len(hs.hello.alpnProtocols) > 0 && hs.serverHello.alpnProtocol != "" {
-			alert = alertIllegalParameter
+		chosenAlert := alertUnsupportedExtension
+		if c.config.Policy().Has("tls.alpn_mismatch_alert") && len(hs.hello.alpnProtocols) > 0 && hs.serverHello.alpnProtocol != "" {
+			chosenAlert = alert(c.config.Policy().Uint("tls.alpn_mismatch_alert"))
 		}
-		c.sendAlert(alert)
+		c.sendAlert(chosenAlert)
 		return false, err
 	}
 	c.clientProtocol = hs.serverHello.alpnProtocol
@@ -1405,8 +1405,8 @@ func computeAndUpdatePSK(m *clientHelloMsg, binderKey []byte, transcript hash.Ha
 }
 
 func (c *Conn) ticketAge(age time.Duration) uint32 {
-	if c.config.ChromeBehavior {
-		return uint32(age/time.Second) * 1000
+	if quantum := c.config.Policy().Uint("tls.ticket_age_quantum_ms"); quantum > 0 {
+		return uint32(age/(time.Duration(quantum)*time.Millisecond)) * uint32(quantum)
 	}
 	return uint32(age / time.Millisecond)
 }

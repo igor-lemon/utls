@@ -1217,7 +1217,7 @@ func (c *Conn) unmarshalHandshakeMessage(data []byte, transcript transcriptHash)
 	// so pass in a fresh copy that won't be overwritten.
 	data = append([]byte(nil), data...)
 
-	if c.isClient && c.config.ChromeBehavior && data[0] == typeEncryptedExtensions {
+	if c.isClient && c.config.Policy().Flag("tls.validate_encrypted_extensions") && data[0] == typeEncryptedExtensions {
 		if err := c.validateServerExtensions(data); err != nil {
 			return nil, c.in.setErrorLocked(err)
 		}
@@ -1393,7 +1393,7 @@ func (c *Conn) handleKeyUpdate(keyUpdate *keyUpdateMsg) error {
 		c.out.Lock()
 		defer c.out.Unlock()
 
-		if c.config.ChromeBehavior {
+		if c.config.Policy().Flag("tls.defer_key_update") {
 			c.utls.pendingKeyUpdate = true
 			return nil
 		}

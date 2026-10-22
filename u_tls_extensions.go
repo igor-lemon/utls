@@ -210,7 +210,7 @@ func (e *SNIExtension) Write(b []byte) (int, error) {
 }
 
 func (e *SNIExtension) writeToUConn(uc *UConn) error {
-	e.chromeBehavior = uc.config.ChromeBehavior
+	e.chromeBehavior = uc.config.Policy().Flag("tls.preserve_sni_trailing_dot")
 	if uc.config.EncryptedClientHelloConfigList == nil { // with ech, e.ServerName is the outer public name and should not be copied
 		uc.config.ServerName = e.ServerName
 	}
