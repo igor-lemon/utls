@@ -3,6 +3,7 @@ package tls
 import (
 	"encoding/binary"
 	"errors"
+	"net"
 )
 
 // validateServerExtensions enforces RFC8446 4.2 on the original extension IDs.
@@ -101,4 +102,22 @@ func (c *Conn) sendPendingKeyUpdate() error {
 	c.out.setTrafficSecret(suite, QUICEncryptionLevelInitial, suite.nextTrafficSecret(c.out.trafficSecret))
 	c.utls.pendingKeyUpdate = false
 	return nil
+}
+
+// ChromeHandshakeRetryable reports the narrowly measured local TLS protocol
+// failures eligible for Chromium's single pre-HTTP SSLConnectJob retry. It does
+// not authorize replay of a request, failed trust verification, remote alerts,
+// TLS 1.2 False Start application writes, or cancellation.
+func (c *UConn) ChromeHandshakeRetryable() bool {
+	if !c.config.ChromeBehavior || c.quic != nil {
+		return false
+	}
+	c.out.Lock()
+	defer c.out.Unlock()
+	var local *net.OpError
+	if !errors.As(c.out.err, &local) || local.Op != "local error" {
+		return false
+	}
+	a, ok := local.Err.(alert)
+	return ok && (a == alertUnexpectedMessage || a == alertDecodeError || a == alertDecryptError || a == alertUnsupportedExtension)
 }

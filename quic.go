@@ -42,7 +42,8 @@ func (l QUICEncryptionLevel) String() string {
 //
 // Methods of QUICConn are not safe for concurrent use.
 type QUICConn struct {
-	conn *Conn
+	conn  *Conn
+	uconn *UConn
 
 	sessionTicketSent bool
 }
@@ -186,6 +187,12 @@ type quicState struct {
 // QUICClient returns a new TLS client side connection using QUICTransport as the
 // underlying transport. The config cannot be nil.
 func QUICClient(config *QUICConfig) *QUICConn {
+	if config.TLSConfig.QUICClientHelloSpec != nil {
+		uc := UClient(nil, config.TLSConfig, HelloCustom, false, false, false)
+		q := newQUICConn(uc.Conn, config)
+		q.uconn = uc
+		return q
+	}
 	return newQUICConn(Client(nil, config.TLSConfig), config)
 }
 
@@ -217,7 +224,18 @@ func (q *QUICConn) Start(ctx context.Context) error {
 		return quicError(errors.New("tls: Start called more than once"))
 	}
 	q.conn.quic.started = true
-	go q.conn.HandshakeContext(ctx)
+	if q.uconn != nil {
+		spec, err := q.conn.config.QUICClientHelloSpec(append([]byte(nil), q.conn.quic.transportParams...))
+		if err != nil {
+			return quicError(err)
+		}
+		if err = q.uconn.ApplyPreset(&spec); err != nil {
+			return quicError(err)
+		}
+		go q.uconn.HandshakeContext(ctx)
+	} else {
+		go q.conn.HandshakeContext(ctx)
+	}
 	if _, ok := <-q.conn.quic.blockedc; !ok {
 		return q.conn.handshakeErr
 	}
