@@ -175,5 +175,7 @@
   "headers.cookie_after": "accept-language",
   "headers.redirected_hints_after": "sec-fetch-dest",
   "headers.h1_connection_default": "keep-alive",
-  "http.idle_connection_timeout_ms": 90000
+  "http.idle_connection_timeout_ms": 90000,
+  "h3.qpack.huffman_names": "always",
+  "h3.qpack.huffman_values": "always"
 }

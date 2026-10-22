@@ -27,6 +27,8 @@ type spec struct {
 }
 
 var supported = map[string]spec{
+	"h3.qpack.huffman_names":                {kind: "text", max: 32, choices: []string{"always", "shorter", "never"}},
+	"h3.qpack.huffman_values":               {kind: "text", max: 32, choices: []string{"always", "shorter", "never"}},
 	"headers.form_cache_control":            {kind: "text", max: 1<<32 - 1},
 	"headers.range_cache_control":           {kind: "text", max: 1<<32 - 1},
 	"headers.range_accept_encoding":         {kind: "text", max: 1<<32 - 1},
