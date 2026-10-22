@@ -2,6 +2,7 @@ package tls
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -152,4 +153,59 @@ func (c *chromeFailedRecordConn) Write(p []byte) (int, error) {
 		return 0, os.ErrDeadlineExceeded
 	}
 	return c.Conn.Write(p)
+}
+
+func TestChromeUnofferedALPNAlertReachesTheWire(t *testing.T) {
+	for _, chrome := range []bool{false, true} {
+		t.Run(fmt.Sprint(chrome), func(t *testing.T) {
+			a, b := net.Pipe()
+			defer a.Close()
+			defer b.Close()
+			a.SetDeadline(time.Now().Add(2 * time.Second))
+			b.SetDeadline(time.Now().Add(2 * time.Second))
+			done := make(chan []byte, 1)
+			go func() {
+				head := make([]byte, 5)
+				if _, err := io.ReadFull(b, head); err != nil {
+					done <- nil
+					return
+				}
+				ch := make([]byte, int(binary.BigEndian.Uint16(head[3:])))
+				if _, err := io.ReadFull(b, ch); err != nil {
+					done <- nil
+					return
+				}
+				hello := &serverHelloMsg{vers: VersionTLS12, random: make([]byte, 32), cipherSuite: TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, alpnProtocol: "bad"}
+				raw, err := hello.marshal()
+				if err != nil {
+					done <- nil
+					return
+				}
+				record := append([]byte{22, 3, 3, byte(len(raw) >> 8), byte(len(raw))}, raw...)
+				if _, err = b.Write(record); err != nil {
+					done <- nil
+					return
+				}
+				alert := make([]byte, 7)
+				_, err = io.ReadFull(b, alert)
+				if err != nil {
+					done <- nil
+					return
+				}
+				done <- alert
+			}()
+			c := UClient(a, &Config{ServerName: "example.com", InsecureSkipVerify: true, ChromeBehavior: chrome, OmitEmptyPsk: true}, HelloChrome_Auto, false, false, true)
+			if err := c.Handshake(); err == nil {
+				t.Fatal("unoffered ALPN accepted")
+			}
+			got := <-done
+			want := byte(alertUnsupportedExtension)
+			if chrome {
+				want = byte(alertIllegalParameter)
+			}
+			if len(got) != 7 || got[0] != 21 || got[5] != 2 || got[6] != want {
+				t.Fatalf("alert %x,want fatal %d", got, want)
+			}
+		})
+	}
 }
