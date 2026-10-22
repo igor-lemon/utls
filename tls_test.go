@@ -21,6 +21,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/igor-lemon/utls/behavior"
 	"io"
 	"math"
 	"math/big"
@@ -975,6 +976,8 @@ func TestCloneNonFuncFields(t *testing.T) {
 			f.Set(reflect.ValueOf(NewLRUClientSessionCache(10)))
 		case "KeyLogWriter":
 			f.Set(reflect.ValueOf(io.Writer(os.Stdout)))
+		case "Behavior":
+			f.Set(reflect.ValueOf(behavior.Legacy()))
 		case "NextProtos":
 			f.Set(reflect.ValueOf([]string{"a", "b"}))
 		case "ServerName":
@@ -3071,5 +3074,14 @@ func TestLocalCertificateResumption(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+func TestProfileBehaviorCloneOwnership(t *testing.T) {
+	c := &Config{Behavior: behavior.Legacy()}
+	copy := c.Clone()
+	copy.Behavior["quic.versions"][1] = '2'
+	if c.Behavior.Numbers("quic.versions")[0] != 1 {
+		t.Fatal("Config.Clone aliases behavior bytes")
 	}
 }
