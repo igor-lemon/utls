@@ -27,6 +27,14 @@ type spec struct {
 }
 
 var supported = map[string]spec{
+	"h3.qpack.encoder_table_bytes":          {kind: "number", max: 1 << 20},
+	"h3.qpack.encoder_warmup_sections":      {kind: "number", max: 1024},
+	"h3.qpack.reference_base":               {kind: "text", choices: []string{"required", "insert-count"}},
+	"h3.qpack.stream_order":                 {kind: "numbers", max: 3},
+	"h3.qpack.encoder_strategy":             {kind: "text", choices: []string{"disabled", "reuse", "insert"}},
+	"h3.qpack.decoder_feedback":             {kind: "text", choices: []string{"on-insert", "on-section"}},
+	"h3.qpack.never_index":                  {kind: "texts"},
+	"h3.qpack.streams":                      {kind: "text", choices: []string{"eager", "lazy"}},
 	"h3.qpack.huffman_names":                {kind: "text", max: 32, choices: []string{"always", "shorter", "never"}},
 	"h3.qpack.huffman_values":               {kind: "text", max: 32, choices: []string{"always", "shorter", "never"}},
 	"headers.form_cache_control":            {kind: "text", max: 1<<32 - 1},
@@ -300,14 +308,20 @@ func (p Policy) Validate() error {
 					break
 				}
 
-				if (x.ID == 1 || x.ID == 7) && x.Value != 0 {
-					err = fmt.Errorf("dynamic QPACK API is unavailable")
+				if (x.ID == 1 && x.Value > 1<<20) || (x.ID == 7 && x.Value > 1024) {
+					err = fmt.Errorf("QPACK exceeds engine resource safety bound")
 					break
 				}
 			}
 		}
 		if err != nil {
 			return fmt.Errorf("behavior %s: %w", k, err)
+		}
+	}
+	if p.Has("h3.qpack.stream_order") {
+		v := p.Numbers("h3.qpack.stream_order")
+		if len(v) != 2 || !((v[0] == 2 && v[1] == 3) || (v[0] == 3 && v[1] == 2)) {
+			return fmt.Errorf("h3.qpack.stream_order must contain 2 and 3 once")
 		}
 	}
 	if p.Flag("quic.enabled") {
