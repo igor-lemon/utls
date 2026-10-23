@@ -78,6 +78,12 @@ var supported = map[string]spec{
 	"h1.idle_reap":                                 {kind: "text", choices: []string{"timer", "on-request"}},
 	"h2.idle_connection_timeout_ms":                {kind: "number", max: 1<<32 - 1},
 	"h2.close_on_goaway":                           {kind: "boolean"},
+	"h2.preface_ping_idle_ms":                      {kind: "number", max: 1<<32 - 1},
+	"h2.preface_ping_first_id":                     {kind: "number", max: 1<<64 - 1},
+	"h2.preface_ping_hung_ms":                      {kind: "number", max: 1<<32 - 1},
+	"h2.preface_ping_failed_goaway_code":           {kind: "number", max: 1<<32 - 1},
+	"h2.preface_ping_failed_goaway_debug":          {kind: "text", max: 1024},
+	"h2.preface_ping_failed_retries":               {kind: "number", max: 16},
 	"tls.close_notify":                             {kind: "boolean"},
 	"tcp.keepalive":                                {kind: "boolean"},
 	"tcp.keepalive_idle_seconds":                   {kind: "number", max: 32767},
@@ -531,6 +537,25 @@ func (p Policy) Validate() error {
 	}
 	if p.Has("h1.idle_reap") && !p.Has("h1.idle_connection_timeout_ms") {
 		return fmt.Errorf("h1.idle_reap requires h1.idle_connection_timeout_ms")
+	}
+	// A connection's own PING (Chrome's SpdySession::MaybeSendPrefacePing and
+	// CheckPingStatus): what it says and how a connection is given up are
+	// said only with when it is sent.
+	for _, k := range []string{"h2.preface_ping_first_id", "h2.preface_ping_hung_ms"} {
+		if p.Has(k) && !p.Has("h2.preface_ping_idle_ms") {
+			return fmt.Errorf("%s requires h2.preface_ping_idle_ms", k)
+		}
+	}
+	if p.Uint("h2.preface_ping_idle_ms") != 0 && !p.Has("h2.preface_ping_first_id") {
+		return fmt.Errorf("h2.preface_ping_idle_ms requires h2.preface_ping_first_id")
+	}
+	for _, k := range []string{"h2.preface_ping_failed_goaway_code", "h2.preface_ping_failed_retries"} {
+		if p.Has(k) && !p.Has("h2.preface_ping_hung_ms") {
+			return fmt.Errorf("%s requires h2.preface_ping_hung_ms", k)
+		}
+	}
+	if p.Has("h2.preface_ping_failed_goaway_debug") && !p.Has("h2.preface_ping_failed_goaway_code") {
+		return fmt.Errorf("h2.preface_ping_failed_goaway_debug requires h2.preface_ping_failed_goaway_code")
 	}
 	if p.Has("h2.window_update_denominator") && p.Uint("h2.window_update_denominator") < 1 {
 		return fmt.Errorf("WINDOW_UPDATE denominator must be positive")

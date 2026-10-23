@@ -122,3 +122,12 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   a ClientHello, and after a failed write with the write's error at once);
   10 mutants, all killed (the first version's check among them, by the
   flood, the two recordings and the written alerts).
+
+- `behavior` registers the `h2.preface_ping_*` fields fhttp reads for its
+  connection's own PING (Chrome's SpdySession::MaybeSendPrefacePing and
+  CheckPingStatus): `idle_ms` and `hung_ms` (at most 2^32-1), `first_id`
+  (any uint64), `failed_goaway_code` (2^32-1), `failed_goaway_debug` (text of
+  at most 1024 bytes) and `failed_retries` (at most 16). `first_id` and
+  `hung_ms` need `idle_ms`; a nonzero `idle_ms` needs `first_id`; the code
+  and the retries need `hung_ms`; the debug data the code. The cases are
+  tls-forge's `TestPrefacePingPolicyIsTypedAndCoherent`.
