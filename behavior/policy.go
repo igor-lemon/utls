@@ -27,6 +27,10 @@ type spec struct {
 }
 
 var supported = map[string]spec{
+	"h3.grease_payload_lengths":                    {kind: "numbers"},
+	"h3.control_order":                             {kind: "texts"},
+	"h3.priority_updates":                          {kind: "text", choices: []string{"initial", "per-request", "disabled"}},
+	"h3.priority_source":                           {kind: "text", choices: []string{"profile", "header"}},
 	"h3.qpack.error_invalid_relative_index_reason": {kind: "qpack-reason-stream", max: 1024},
 	"h3.qpack.error_capacity_exceeded_reason":      {kind: "qpack-reason", max: 1024},
 	"h3.qpack.error_zero_increment_reason":         {kind: "qpack-reason", max: 1024},
@@ -53,7 +57,7 @@ var supported = map[string]spec{
 	"h3.qpack.encoder_strategy":                    {kind: "text", choices: []string{"disabled", "reuse", "insert"}},
 	"h3.qpack.decoder_feedback":                    {kind: "text", choices: []string{"on-insert", "on-section"}},
 	"h3.qpack.never_index":                         {kind: "texts"},
-	"h3.qpack.streams":                             {kind: "text", choices: []string{"eager", "lazy"}},
+	"h3.qpack.streams":                             {kind: "text", choices: []string{"eager", "lazy", "deferred"}},
 	"h3.qpack.huffman_names":                       {kind: "text", max: 32, choices: []string{"always", "shorter", "never"}},
 	"h3.qpack.huffman_values":                      {kind: "text", max: 32, choices: []string{"always", "shorter", "never"}},
 	"headers.form_cache_control":                   {kind: "text", max: 1<<32 - 1},
@@ -406,6 +410,39 @@ func (p Policy) Validate() error {
 	}
 	if p.Has("h3.grease_frame_n_bits") && (p.Uint("h3.grease_frame_n_bits") < 1 || p.Uint("h3.grease_frame_n_bits") > 56) {
 		return fmt.Errorf("unsupported GREASE frame range")
+	}
+	if p.Has("h3.grease_payload_lengths") {
+		lengths := p.Numbers("h3.grease_payload_lengths")
+		if len(lengths) == 0 || len(lengths) > 256 {
+			return fmt.Errorf("invalid GREASE payload length vector")
+		}
+		for _, n := range lengths {
+			if n > 4096 {
+				return fmt.Errorf("GREASE payload exceeds engine resource bound")
+			}
+		}
+	}
+	if p.Has("h3.control_order") {
+		order := p.Strings("h3.control_order")
+		if len(order) == 0 || order[0] != "settings" {
+			return fmt.Errorf("HTTP3 control order must start with SETTINGS")
+		}
+		seen := map[string]bool{}
+		for _, component := range order {
+			if seen[component] || !slices.Contains([]string{"settings", "priority", "grease"}, component) {
+				return fmt.Errorf("invalid/duplicate HTTP3 control component")
+			}
+			seen[component] = true
+		}
+		if p.Flag("h3.grease_frames") && !seen["grease"] {
+			return fmt.Errorf("GREASE frame enabled but absent from control order")
+		}
+		if p.Text("h3.priority_updates") == "initial" && p.Uint("h3.priority_frame_type") > 0 && !seen["priority"] {
+			return fmt.Errorf("initial priority missing from control order")
+		}
+		if p.Text("h3.priority_updates") != "initial" && seen["priority"] {
+			return fmt.Errorf("initial priority requires initial mode")
+		}
 	}
 	if p.Flag("headers.browser_context") {
 		for _, key := range []string{"headers.navigation_order", "headers.form_order", "headers.redirected_order", "headers.restarted_order"} {
