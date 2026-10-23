@@ -26,6 +26,18 @@ type spec struct {
 	choices  []string
 }
 
+// unreadBody are the ways an answer a request goes on from without reading
+// it is let go of: as the engine always did ("read"), at once ("close"), read
+// in the background within http.drain_bytes and http.drain_ms ("drain"), read
+// to its end first ("read-all"), or once the first of its bytes come, within
+// http.first_bytes_ms ("first-bytes").
+var unreadBody = []string{"read", "close", "drain", "read-all", "first-bytes"}
+
+// unreadBodies are the keys that say how, each of a kind of answer and a
+// protocol.
+var unreadBodies = []string{"h1.dropped_body", "h2.dropped_body", "h1.auth_body", "h2.auth_body",
+	"h1.restart_body", "h2.restart_body", "h1.preflight_body", "h2.preflight_body"}
+
 var supported = map[string]spec{
 	"http.zero_content_length_methods":             {kind: "methods"},
 	"http.content_length_empty_body":               {kind: "boolean"},
@@ -85,6 +97,19 @@ var supported = map[string]spec{
 	"h2.preface_ping_failed_goaway_code":           {kind: "number", max: 1<<32 - 1},
 	"h2.preface_ping_failed_goaway_debug":          {kind: "text", max: 1024},
 	"h2.preface_ping_failed_retries":               {kind: "number", max: 16},
+	"h1.dropped_body":                              {kind: "text", choices: unreadBody},
+	"h2.dropped_body":                              {kind: "text", choices: unreadBody},
+	"h1.auth_body":                                 {kind: "text", choices: unreadBody},
+	"h2.auth_body":                                 {kind: "text", choices: unreadBody},
+	"h1.restart_body":                              {kind: "text", choices: unreadBody},
+	"h2.restart_body":                              {kind: "text", choices: unreadBody},
+	"h1.preflight_body":                            {kind: "text", choices: unreadBody},
+	"h2.preflight_body":                            {kind: "text", choices: unreadBody},
+	"http.drain_bytes":                             {kind: "number", max: 1 << 30},
+	"http.drain_ms":                                {kind: "number", max: 1<<32 - 1},
+	"http.first_bytes_ms":                          {kind: "number", max: 1<<32 - 1},
+	"h1.unread_grace_us":                           {kind: "number", max: 10_000_000},
+	"h2.unread_grace_us":                           {kind: "number", max: 10_000_000},
 	"tls.close_notify":                             {kind: "boolean"},
 	"tcp.keepalive":                                {kind: "boolean"},
 	"tcp.keepalive_idle_seconds":                   {kind: "number", max: 32767},
@@ -557,6 +582,30 @@ func (p Policy) Validate() error {
 	}
 	if p.Has("h2.preface_ping_failed_goaway_debug") && !p.Has("h2.preface_ping_failed_goaway_code") {
 		return fmt.Errorf("h2.preface_ping_failed_goaway_debug requires h2.preface_ping_failed_goaway_code")
+	}
+	// An answer drained in the background (Chrome's HttpResponseBodyDrainer)
+	// is drained within both limits, and one awaited until its first bytes
+	// within its own; neither says anything without such an answer, nor
+	// does the grace of a protocol none of whose answers is let go of.
+	for _, limits := range [][]string{{"drain", "http.drain_bytes", "http.drain_ms"}, {"first-bytes", "http.first_bytes_ms"}} {
+		mode := limits[0]
+		used := slices.ContainsFunc(unreadBodies, func(k string) bool { return p.Text(k) == mode })
+		for _, k := range limits[1:] {
+			if used && !p.Has(k) {
+				return fmt.Errorf("an answer let go of by %s requires %s", mode, k)
+			}
+			if !used && p.Has(k) {
+				return fmt.Errorf("%s is set while no answer is let go of by %s", k, mode)
+			}
+		}
+	}
+	for _, proto := range []string{"h1.", "h2."} {
+		letGo := slices.ContainsFunc(unreadBodies, func(k string) bool {
+			return strings.HasPrefix(k, proto) && slices.Contains([]string{"close", "drain", "first-bytes"}, p.Text(k))
+		})
+		if p.Has(proto+"unread_grace_us") && !letGo {
+			return fmt.Errorf("%sunread_grace_us is set while no answer over it is let go of", proto)
+		}
 	}
 	if p.Has("h2.window_update_denominator") && p.Uint("h2.window_update_denominator") < 1 {
 		return fmt.Errorf("WINDOW_UPDATE denominator must be positive")

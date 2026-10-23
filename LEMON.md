@@ -134,3 +134,14 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 - `behavior` registers `h2.priority_dependency` (`root` or `nearest-weight`),
   which fhttp reads for the stream a request's HEADERS depend on; held by
   tls-forge's `TestPriorityDependencyIsAChoiceOfTheEngines`.
+- `behavior` registers how an answer a request goes on from unread is let go
+  of, which tls-forge reads (its `unread.go`, over fhttp's `DrainBody` and
+  `AwaitBody`): `h1.`/`h2.` `dropped_body`, `auth_body`, `restart_body` and
+  `preflight_body`, each `read`, `close`, `drain`, `read-all` or
+  `first-bytes`; `http.drain_bytes` (at most 1 GiB) and `http.drain_ms`
+  (2^32-1), required with a `drain` and refused without one;
+  `http.first_bytes_ms` (2^32-1), likewise with a `first-bytes`; and
+  `h1.unread_grace_us`/`h2.unread_grace_us` (at most 10 s), refused for a
+  protocol none of whose answers is let go of by `close`, `drain` or
+  `first-bytes`. The cases are tls-forge's
+  `TestUnreadAnswerPolicyIsTypedAndCoherent`.
