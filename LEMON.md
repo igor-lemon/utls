@@ -131,3 +131,6 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   `hung_ms` need `idle_ms`; a nonzero `idle_ms` needs `first_id`; the code
   and the retries need `hung_ms`; the debug data the code. The cases are
   tls-forge's `TestPrefacePingPolicyIsTypedAndCoherent`.
+- `behavior` registers `h2.priority_dependency` (`root` or `nearest-weight`),
+  which fhttp reads for the stream a request's HEADERS depend on; held by
+  tls-forge's `TestPriorityDependencyIsAChoiceOfTheEngines`.
