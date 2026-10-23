@@ -74,6 +74,15 @@ var supported = map[string]spec{
 	"headers.redirected_hints_after":               {kind: "text", max: 1<<32 - 1},
 	"headers.h1_connection_default":                {kind: "text", max: 1<<32 - 1},
 	"http.idle_connection_timeout_ms":              {kind: "number", max: 1<<32 - 1},
+	"h1.idle_connection_timeout_ms":                {kind: "number", max: 1<<32 - 1},
+	"h1.idle_reap":                                 {kind: "text", choices: []string{"timer", "on-request"}},
+	"h2.idle_connection_timeout_ms":                {kind: "number", max: 1<<32 - 1},
+	"h2.close_on_goaway":                           {kind: "boolean"},
+	"tls.close_notify":                             {kind: "boolean"},
+	"tcp.keepalive":                                {kind: "boolean"},
+	"tcp.keepalive_idle_seconds":                   {kind: "number", max: 32767},
+	"tcp.keepalive_interval_seconds":               {kind: "number", max: 32767},
+	"tcp.keepalive_count":                          {kind: "number", max: 127},
 	"http.negotiate_auth":                          {kind: "boolean"},
 	"http.digest_cnonce_bytes":                     {kind: "number", min: 1, max: 64},
 	"http.digest_algorithms":                       {kind: "texts"},
@@ -511,6 +520,17 @@ func (p Policy) Validate() error {
 				return fmt.Errorf("%s is missing ALPS anchor %s", key, anchor)
 			}
 		}
+	}
+	for _, k := range []string{"tcp.keepalive_idle_seconds", "tcp.keepalive_interval_seconds", "tcp.keepalive_count"} {
+		if p.Has(k) && !p.Has("tcp.keepalive") {
+			return fmt.Errorf("%s requires tcp.keepalive", k)
+		}
+		if p.Has(k) && !p.Flag("tcp.keepalive") && p.Uint(k) != 0 {
+			return fmt.Errorf("%s is set while tcp.keepalive is false", k)
+		}
+	}
+	if p.Has("h1.idle_reap") && !p.Has("h1.idle_connection_timeout_ms") {
+		return fmt.Errorf("h1.idle_reap requires h1.idle_connection_timeout_ms")
 	}
 	if p.Has("h2.window_update_denominator") && p.Uint("h2.window_update_denominator") < 1 {
 		return fmt.Errorf("WINDOW_UPDATE denominator must be positive")

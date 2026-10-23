@@ -130,6 +130,16 @@ func (c *UConn) ChromeHandshakeRetryable() bool {
 	return false
 }
 
+// sendsCloseNotify reports whether Close sends a close_notify alert first. A
+// profile of a browser that never shuts TLS down says "tls.close_notify": false:
+// Chromium's SSLClientSocketImpl::Disconnect calls no SSL_shutdown, so Chrome
+// ends a connection with the TCP FIN alone. Without the field Close sends the
+// alert, as crypto/tls does. CloseWrite always sends it: it is asked for.
+func (c *Conn) sendsCloseNotify() bool {
+	p := c.config.Policy()
+	return !p.Has("tls.close_notify") || p.Flag("tls.close_notify")
+}
+
 // Policy resolves explicit profile data; only deprecated backend callers use legacy migration.
 func (c *Config) Policy() behavior.Policy {
 	if c == nil {
