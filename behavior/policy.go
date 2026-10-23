@@ -27,6 +27,10 @@ type spec struct {
 }
 
 var supported = map[string]spec{
+	"http.zero_content_length_methods":             {kind: "methods"},
+	"http.content_length_empty_body":               {kind: "boolean"},
+	"h1.zero_length_identity":                      {kind: "boolean"},
+	"h1.zero_length_identity_excluded_methods":     {kind: "methods"},
 	"h2.read_loop_start":                           {kind: "text", choices: []string{"connection", "first-headers"}},
 	"h3.grease_payload_lengths":                    {kind: "numbers"},
 	"h3.control_order":                             {kind: "texts"},
@@ -310,6 +314,23 @@ func (p Policy) Validate() error {
 			}
 			if err == nil && len(s.choices) > 0 && !slices.Contains(s.choices, v) {
 				err = fmt.Errorf("unsupported primitive %q", v)
+			}
+		case "methods":
+			var methods []string
+			err = json.Unmarshal(raw, &methods)
+			seen := map[string]bool{}
+			for _, method := range methods {
+				if method == "" || len(method) > 256 || seen[method] {
+					err = fmt.Errorf("empty, oversized or duplicate method")
+					break
+				}
+				seen[method] = true
+				for _, c := range method {
+					if c <= 32 || c >= 127 || strings.ContainsRune("()<>@,;:\"/[]?={}", c) {
+						err = fmt.Errorf("invalid method token")
+						break
+					}
+				}
 			}
 		case "texts":
 			var v []string
