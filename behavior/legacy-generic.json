@@ -222,5 +222,6 @@
     "grease"
   ],
   "h3.priority_updates": "initial",
-  "h3.priority_source": "profile"
+  "h3.priority_source": "profile",
+  "h2.read_loop_start": "connection"
 }

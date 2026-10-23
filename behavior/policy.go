@@ -27,6 +27,7 @@ type spec struct {
 }
 
 var supported = map[string]spec{
+	"h2.read_loop_start":                           {kind: "text", choices: []string{"connection", "first-headers"}},
 	"h3.grease_payload_lengths":                    {kind: "numbers"},
 	"h3.control_order":                             {kind: "texts"},
 	"h3.priority_updates":                          {kind: "text", choices: []string{"initial", "per-request", "disabled"}},
