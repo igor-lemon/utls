@@ -78,6 +78,7 @@ var supported = map[string]spec{
 	"h1.idle_reap":                                 {kind: "text", choices: []string{"timer", "on-request"}},
 	"h2.idle_connection_timeout_ms":                {kind: "number", max: 1<<32 - 1},
 	"h2.close_on_goaway":                           {kind: "boolean"},
+	"h2.priority_dependency":                       {kind: "text", choices: []string{"root", "nearest-weight"}},
 	"h2.preface_ping_idle_ms":                      {kind: "number", max: 1<<32 - 1},
 	"h2.preface_ping_first_id":                     {kind: "number", max: 1<<64 - 1},
 	"h2.preface_ping_hung_ms":                      {kind: "number", max: 1<<32 - 1},
