@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/igor-lemon/utls/behavior"
 )
 
 func TestChromeTicketAgeAndAtomicConsumption(t *testing.T) {
@@ -208,4 +210,93 @@ func TestChromeUnofferedALPNAlertReachesTheWire(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCloseSendsCloseNotifyAsThePolicySays holds Close to "tls.close_notify":
+// false writes nothing more than the TCP close, true and an absent field the
+// alert record crypto/tls writes, over TLS 1.3 and 1.2; CloseWrite always
+// sends it.
+func TestCloseSendsCloseNotifyAsThePolicySays(t *testing.T) {
+	for _, version := range []uint16{VersionTLS13, VersionTLS12} {
+		for _, tc := range []struct {
+			name  string
+			field string
+			alert bool
+		}{
+			{"absent", "", true},
+			{"true", "true", true},
+			{"false", "false", false},
+		} {
+			t.Run(fmt.Sprintf("%x/%s", version, tc.name), func(t *testing.T) {
+				raw, peer := net.Pipe()
+				raw.SetDeadline(time.Now().Add(5 * time.Second))
+				peer.SetDeadline(time.Now().Add(5 * time.Second))
+				serverConfig := testConfig.Clone()
+				serverConfig.MinVersion, serverConfig.MaxVersion = version, version
+				server := Server(peer, serverConfig)
+				after := make(chan []byte, 1)
+				go func() {
+					defer peer.Close()
+					if err := server.Handshake(); err != nil {
+						after <- nil
+						return
+					}
+					// What the client sends once the handshake is over: its
+					// records as they are on the wire, read under the TLS layer.
+					var got bytes.Buffer
+					io.Copy(&got, server.conn)
+					after <- got.Bytes()
+				}()
+				cfg := testConfig.Clone()
+				cfg.InsecureSkipVerify = true
+				cfg.MinVersion, cfg.MaxVersion = version, version
+				if tc.field != "" {
+					cfg.Behavior = behavior.Policy{"tls.close_notify": []byte(tc.field)}
+				}
+				client := Client(raw, cfg)
+				if err := client.Handshake(); err != nil {
+					t.Fatal(err)
+				}
+				if err := client.Close(); err != nil {
+					t.Fatal(err)
+				}
+				got := <-after
+				if tc.alert && len(got) == 0 {
+					t.Fatal("Close sent no close_notify")
+				}
+				if !tc.alert && len(got) != 0 {
+					t.Fatalf("Close wrote %d bytes before the TCP close", len(got))
+				}
+			})
+		}
+	}
+	// CloseWrite is the caller's own half-close and keeps its alert.
+	raw, peer := net.Pipe()
+	raw.SetDeadline(time.Now().Add(5 * time.Second))
+	peer.SetDeadline(time.Now().Add(5 * time.Second))
+	server := Server(peer, testConfig.Clone())
+	alert := make(chan error, 1)
+	go func() {
+		defer peer.Close()
+		if err := server.Handshake(); err != nil {
+			alert <- err
+			return
+		}
+		_, err := server.Read(make([]byte, 1))
+		alert <- err
+	}()
+	cfg := testConfig.Clone()
+	cfg.InsecureSkipVerify = true
+	cfg.Behavior = behavior.Policy{"tls.close_notify": []byte("false")}
+	client := Client(raw, cfg)
+	if err := client.Handshake(); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.CloseWrite(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-alert; err != io.EOF {
+		t.Fatalf("server read %v after CloseWrite, want the close_notify's EOF", err)
+	}
+	raw.Close()
 }

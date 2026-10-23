@@ -78,6 +78,18 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   by case); 27 mutants, 26 killed, and one equivalent (`finishFalseStart`'s
   first look at `falseStarted` before the lock, which saves taking it).
 
+- `Conn.Close` without close_notify when the policy says `"tls.close_notify":
+  false` (`u_chrome_policy.go` `sendsCloseNotify`; `behavior` registers it with
+  the `tcp.keepalive*`, `h1.idle_*`, `h2.idle_connection_timeout_ms` and
+  `h2.close_on_goaway` fields the other forks read). Chromium's
+  `SSLClientSocketImpl::Disconnect` calls no `SSL_shutdown`: Chrome 155 ended
+  every connection with the TCP FIN alone, also after the server's
+  close_notify (measured 2026-10-23). Absent, Close sends the alert as
+  before; `CloseWrite` always does, being asked to. Test
+  `TestCloseSendsCloseNotifyAsThePolicySays` (TLS 1.3 and 1.2, absent, true,
+  false, CloseWrite), which fails with the check taken out (24 and 23 bytes
+  written).
+
 - **No record of a client after one whose write failed**
   (`Conn.writeRecordLocked` and `Conn.sendAlertLocked` in `conn.go`,
   `failedWrite` in `u_conn.go`): a record takes its sequence number, and with

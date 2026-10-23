@@ -1492,7 +1492,7 @@ func (c *Conn) Close() error {
 	}
 
 	var alertErr error
-	if c.isHandshakeComplete.Load() {
+	if c.isHandshakeComplete.Load() && c.sendsCloseNotify() {
 		if err := c.closeNotify(); err != nil {
 			alertErr = fmt.Errorf("tls: failed to send closeNotify alert (but connection was closed anyway): %w", err)
 		}
