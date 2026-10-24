@@ -3418,7 +3418,9 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			if ext.ServerName == "" {
 				ext.ServerName = uconn.config.ServerName
 			}
-			if uconn.config.EncryptedClientHelloConfigList != nil {
+			// An offer of the profile's own names the public name in its
+			// outer hello alone, as it is marshalled (u_ech_spec.go).
+			if uconn.config.EncryptedClientHelloConfigList != nil && ech != nil {
 				ext.ServerName = string(ech.config.PublicName)
 			}
 		case *UtlsGREASEExtension:

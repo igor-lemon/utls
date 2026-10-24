@@ -60,6 +60,10 @@ type UConn struct {
 
 	// echCtx is the echContex returned by makeClientHello()
 	echCtx *echClientContext
+
+	// echSpec is how the inner hello of an ECH offer is made of the
+	// profile's own (u_ech_spec.go), or nil.
+	echSpec *specECH
 }
 
 // UClient returns a new uTLS client, with behavior depending on clientHelloID.
@@ -197,8 +201,15 @@ func (uconn *UConn) uLoadSession() error {
 func (uconn *UConn) uApplyPatch() {
 	helloLen := len(uconn.HandshakeState.Hello.Raw)
 	if uconn.sessionController.shouldUpdateBinders() {
-		uconn.sessionController.updateBinders()
+		// An ECH offer's session is resumed by its inner hello alone, whose
+		// binders are its own.
+		if uconn.echSpec == nil {
+			uconn.sessionController.updateBinders()
+		}
 		uconn.sessionController.setPskToUConn()
+		if uconn.echSpec != nil {
+			uconn.HandshakeState.Hello.PskIdentities, uconn.HandshakeState.Hello.PskBinders = nil, nil
+		}
 	}
 	uAssert(helloLen == len(uconn.HandshakeState.Hello.Raw), "tls: uApplyPatch Failed: the patch should never change the length of the marshaled clientHello")
 }
@@ -567,6 +578,12 @@ func (uconn *UConn) computeAndUpdateOuterECHExtension(inner *clientHelloMsg, ech
 }
 
 func (uconn *UConn) MarshalClientHello() error {
+	if uconn.config.offersSpecECH() {
+		if err := uconn.startSpecECH(); err != nil {
+			return err
+		}
+		return uconn.sealSpecECH(uconn.echCtx.encapsulatedKey, nil)
+	}
 	if len(uconn.config.EncryptedClientHelloConfigList) > 0 {
 		inner, _, ech, err := uconn.makeClientHello()
 		if err != nil {
@@ -598,6 +615,16 @@ func (uconn *UConn) MarshalClientHello() error {
 // MarshalClientHelloNoECH marshals ClientHello as if there was no
 // ECH extension present.
 func (uconn *UConn) MarshalClientHelloNoECH() error {
+	raw, err := uconn.marshalHello(uconn.Extensions)
+	if err != nil {
+		return err
+	}
+	uconn.HandshakeState.Hello.Raw = raw
+	return nil
+}
+
+// marshalHello is uconn's ClientHello with exts for its extensions.
+func (uconn *UConn) marshalHello(exts []TLSExtension) ([]byte, error) {
 	hello := uconn.HandshakeState.Hello
 	headerLength := 2 + 32 + 1 + len(hello.SessionId) +
 		2 + len(hello.CipherSuites)*2 +
@@ -605,7 +632,7 @@ func (uconn *UConn) MarshalClientHelloNoECH() error {
 
 	extensionsLen := 0
 	var paddingExt *UtlsPaddingExtension // reference to padding extension, if present
-	for _, ext := range uconn.Extensions {
+	for _, ext := range exts {
 		if pe, ok := ext.(*UtlsPaddingExtension); !ok {
 			// If not padding - just add length of extension to total length
 			extensionsLen += ext.Len()
@@ -614,7 +641,7 @@ func (uconn *UConn) MarshalClientHelloNoECH() error {
 			if paddingExt == nil {
 				paddingExt = pe
 			} else {
-				return errors.New("multiple padding extensions")
+				return nil, errors.New("multiple padding extensions")
 			}
 		}
 	}
@@ -626,7 +653,7 @@ func (uconn *UConn) MarshalClientHelloNoECH() error {
 	}
 
 	helloLen := headerLength
-	if len(uconn.Extensions) > 0 {
+	if len(exts) > 0 {
 		helloLen += 2 + extensionsLen // 2 bytes for extensions' length
 	}
 
@@ -653,27 +680,26 @@ func (uconn *UConn) MarshalClientHelloNoECH() error {
 	binary.Write(bufferedWriter, binary.BigEndian, uint8(len(hello.CompressionMethods)))
 	binary.Write(bufferedWriter, binary.BigEndian, hello.CompressionMethods)
 
-	if len(uconn.Extensions) > 0 {
+	if len(exts) > 0 {
 		binary.Write(bufferedWriter, binary.BigEndian, uint16(extensionsLen))
-		for _, ext := range uconn.Extensions {
+		for _, ext := range exts {
 			if _, err := bufferedWriter.ReadFrom(ext); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
 
 	err := bufferedWriter.Flush()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if helloBuffer.Len() != 4+helloLen {
-		return errors.New("utls: unexpected ClientHello length. Expected: " + strconv.Itoa(4+helloLen) +
+		return nil, errors.New("utls: unexpected ClientHello length. Expected: " + strconv.Itoa(4+helloLen) +
 			". Got: " + strconv.Itoa(helloBuffer.Len()))
 	}
 
-	hello.Raw = helloBuffer.Bytes()
-	return nil
+	return helloBuffer.Bytes(), nil
 }
 
 // get current state of cipher and encrypt zeros to get keystream

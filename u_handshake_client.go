@@ -338,7 +338,9 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 	// }
 
 	var ech *echClientContext
-	if c.config.EncryptedClientHelloConfigList != nil {
+	// An offer whose inner hello is the profile's own is made as the hello is
+	// marshalled (u_ech_spec.go), the outer offering what the profile does.
+	if c.config.EncryptedClientHelloConfigList != nil && !c.config.offersSpecECH() {
 		if c.config.MinVersion != 0 && c.config.MinVersion < VersionTLS13 {
 			return nil, nil, nil, errors.New("tls: MinVersion must be >= VersionTLS13 if EncryptedClientHelloConfigList is populated")
 		}
@@ -575,10 +577,22 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+	// [uTLS] A server that takes an ECH offer of the profile's own speaks
+	// TLS 1.3: one that went on in TLS 1.2 took the outer hello, and the
+	// handshake authenticated it as the public name. ECH was refused, with no
+	// configs to retry with, as BoringSSL ends it (SSL_R_ECH_REJECTED).
+	if c.echSpec != nil {
+		c.isHandshakeComplete.Store(false)
+		c.sendAlert(alertECHRequired)
+		return &ECHRejectionError{}
+	}
 	return nil
 }
 
 func (c *UConn) echTranscriptMsg(outer *clientHelloMsg, echCtx *echClientContext) (err error) {
+	if c.echSpec != nil {
+		return transcriptMsg(echCtx.innerHello, echCtx.innerTranscript)
+	}
 	// Recreate the inner ClientHello from its compressed form using server's decodeInnerClientHello function.
 	// See https://github.com/refraction-networking/utls/blob/e430876b1d82fdf582efc57f3992d448e7ab3d8a/ech.go#L276-L283
 	encodedInner, err := encodeInnerClientHelloReorderOuterExts(echCtx.innerHello, int(echCtx.config.MaxNameLength), c.extensionsList())

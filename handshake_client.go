@@ -1194,8 +1194,10 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 				opts.CurrentTime = certs[0].NotAfter
 			}
 
+			// The server that refused ECH speaks for the config's public
+			// name, which the outer hello named (RFC 9849 section 6.1.7).
 			if len(c.config.InsecureServerNameToVerify) == 0 {
-				opts.DNSName = c.config.ServerName
+				opts.DNSName = c.serverName
 			} else if c.config.InsecureServerNameToVerify != "*" {
 				opts.DNSName = c.config.InsecureServerNameToVerify
 			}

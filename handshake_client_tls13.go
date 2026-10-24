@@ -14,7 +14,6 @@ import (
 	"crypto/rsa"
 	"crypto/subtle"
 	"errors"
-	"fmt"
 	"hash"
 	"slices"
 	"time"
@@ -392,7 +391,10 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 	// Instead, we fill uTLS-specific structs and call uTLS marshaller.
 	// Only ExtensionCookie, ExtensionPreSharedKey, ExtensionKeyShare, ExtensionEarlyData, ExtensionSupportedVersions,
 	// and utlsExtensionPadding are supposed to change
-	if hs.uconn != nil {
+	// An ECH offer whose inner hello is the profile's own makes both hellos
+	// again below, accepted or not (helloRetrySpecECH).
+	specECH := hs.uconn != nil && hs.uconn.echSpec != nil
+	if hs.uconn != nil && !specECH {
 		if hs.uconn.ClientHelloID.Str() != HelloGolang.Str() {
 			if len(hs.hello.pskIdentities) > 0 {
 				// TODO: wait for someone who cares about PSK to implement
@@ -412,35 +414,8 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 					"uconn.Extensions")
 			}
 
-			if len(hs.serverHello.cookie) > 0 {
-				// serverHello specified a cookie, let's echo it
-				cookieFound := false
-				for _, ext := range hs.uconn.Extensions {
-					if ks, ok := ext.(*CookieExtension); ok {
-						ks.Cookie = hs.serverHello.cookie
-						cookieFound = true
-					}
-				}
-
-				if !cookieFound {
-					// pick a random index where to add cookieExtension
-					// -2 instead of -1 is a lazy way to ensure that PSK is still a last extension
-					p, err := newPRNG()
-					if err != nil {
-						return err
-					}
-					cookieIndex := p.Intn(len(hs.uconn.Extensions) - 2)
-					if cookieIndex >= len(hs.uconn.Extensions) {
-						// this check is for empty hs.uconn.Extensions
-						return fmt.Errorf("cookieIndex >= len(hs.uconn.Extensions): %v >= %v",
-							cookieIndex, len(hs.uconn.Extensions))
-					}
-					hs.uconn.Extensions = append(hs.uconn.Extensions[:cookieIndex],
-						append([]TLSExtension{&CookieExtension{Cookie: hs.serverHello.cookie}},
-							hs.uconn.Extensions[cookieIndex:]...)...)
-				}
-			}
-			if err := hs.uconn.MarshalClientHelloNoECH(); err != nil {
+			// The cookie goes in before the hello is marshalled again.
+			if err := errors.Join(hs.uconn.cookieForRetry(hs.serverHello.cookie), hs.uconn.MarshalClientHelloNoECH()); err != nil {
 				return err
 			}
 			hs.hello.original = hs.uconn.HandshakeState.Hello.Raw
@@ -452,7 +427,11 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 		c.quicRejectedEarlyData()
 	}
 
-	if isInnerHello {
+	if specECH {
+		if err := hs.uconn.helloRetrySpecECH(hs, hello); err != nil {
+			return err
+		}
+	} else if isInnerHello {
 		// Any extensions which have changed in hello, but are mirrored in the
 		// outer hello and compressed, need to be copied to the outer hello, so
 		// they can be properly decompressed by the server. For now, the only
@@ -483,6 +462,13 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 		hs.hello = hello
 	}
 
+	return hs.sendHelloRetried()
+}
+
+// sendHelloRetried sends the second ClientHello, hs.hello, and reads the
+// ServerHello that answers it.
+func (hs *clientHandshakeStateTLS13) sendHelloRetried() error {
+	c := hs.c
 	if _, err := hs.c.writeHandshakeRecord(hs.hello, hs.transcript); err != nil {
 		return err
 	}

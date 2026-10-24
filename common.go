@@ -1266,7 +1266,10 @@ func (c *Config) supportedVersions(isClient bool) []uint16 {
 			}
 			// [uTLS SECTION END]
 		}
-		if isClient && c.EncryptedClientHelloConfigList != nil && v < VersionTLS13 {
+		// [uTLS] An offer of the profile's own goes in an outer hello that
+		// offers what the profile does, TLS 1.2 too, as Chrome's: a server
+		// that answers in it refused the offer (u_handshake_client.go).
+		if isClient && c.EncryptedClientHelloConfigList != nil && v < VersionTLS13 && !c.offersSpecECH() {
 			continue
 		}
 		if c != nil && c.MinVersion != 0 && v < c.MinVersion {
