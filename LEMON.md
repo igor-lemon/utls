@@ -126,11 +126,12 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 - `behavior` registers the `h2.preface_ping_*` fields fhttp reads for its
   connection's own PING (Chrome's SpdySession::MaybeSendPrefacePing and
   CheckPingStatus): `idle_ms` and `hung_ms` (at most 2^32-1), `first_id`
-  (any uint64), `failed_goaway_code` (2^32-1), `failed_goaway_debug` (text of
-  at most 1024 bytes) and `failed_retries` (at most 16). `first_id` and
-  `hung_ms` need `idle_ms`; a nonzero `idle_ms` needs `first_id`; the code
-  and the retries need `hung_ms`; the debug data the code. The cases are
-  tls-forge's `TestPrefacePingPolicyIsTypedAndCoherent`.
+  (any uint64), `failed_goaway_code` (2^32-1) and `failed_goaway_debug`
+  (text of at most 1024 bytes). `first_id` and `hung_ms` need `idle_ms`; a
+  nonzero `idle_ms` needs `first_id`; the code needs `hung_ms`; the debug
+  data the code. The cases are tls-forge's
+  `TestPrefacePingPolicyIsTypedAndCoherent`. (`failed_retries` went on
+  2026-10-24 for `h2.retries` with `ping-failed`, below.)
 - `behavior` registers `h2.priority_dependency` (`root` or `nearest-weight`),
   which fhttp reads for the stream a request's HEADERS depend on; held by
   tls-forge's `TestPriorityDependencyIsAChoiceOfTheEngines`.
@@ -144,4 +145,13 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   `h1.unread_grace_us`/`h2.unread_grace_us` (at most 10 s), refused for a
   protocol none of whose answers is let go of by `close`, `drain` or
   `first-bytes`. The cases are tls-forge's
-  `TestUnreadAnswerPolicyIsTypedAndCoherent`.
+  `TestUnreadAnswerPolicyIsTypedAndCoherent`; 9 mutants, all killed.
+- `behavior` registers when a request goes again, which fhttp reads (its
+  `http2/resend.go` and `transport.go`): `h2.retries` (at most 16) with
+  `h2.retry_errors` (each of `refused-stream`, `goaway-no-error`,
+  `goaway-error`, `ping-failed` once, the last needing
+  `h2.preface_ping_hung_ms`), `h2.retry_delay_ms` (at most 60000, needing
+  `h2.retries`), `http.connection_error_retries` (at most 1000) with
+  `http.connection_error_methods` (`any` or `idempotent`), which need
+  `h2.retries`, and `h1.request_timeout_resend`. The cases are tls-forge's
+  `TestRetryPolicyIsTypedAndCoherent`; 13 mutants, all killed.

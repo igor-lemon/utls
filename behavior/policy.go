@@ -38,6 +38,13 @@ var unreadBody = []string{"read", "close", "drain", "read-all", "first-bytes"}
 var unreadBodies = []string{"h1.dropped_body", "h2.dropped_body", "h1.auth_body", "h2.auth_body",
 	"h1.restart_body", "h2.restart_body", "h1.preflight_body", "h2.preflight_body"}
 
+// h2RetryErrors are the HTTP/2 failures that say a request was not processed,
+// which h2.retry_errors may name to send it again for: a stream refused
+// (RST_STREAM REFUSED_STREAM), a stream above the last a GOAWAY with NO_ERROR
+// or with another code says the server took, a connection given up for its
+// PING.
+var h2RetryErrors = []string{"refused-stream", "goaway-no-error", "goaway-error", "ping-failed"}
+
 var supported = map[string]spec{
 	"http.zero_content_length_methods":             {kind: "methods"},
 	"http.content_length_empty_body":               {kind: "boolean"},
@@ -96,7 +103,12 @@ var supported = map[string]spec{
 	"h2.preface_ping_hung_ms":                      {kind: "number", max: 1<<32 - 1},
 	"h2.preface_ping_failed_goaway_code":           {kind: "number", max: 1<<32 - 1},
 	"h2.preface_ping_failed_goaway_debug":          {kind: "text", max: 1024},
-	"h2.preface_ping_failed_retries":               {kind: "number", max: 16},
+	"h2.retries":                                   {kind: "number", max: 16},
+	"h2.retry_errors":                              {kind: "texts"},
+	"h2.retry_delay_ms":                            {kind: "number", max: 60000},
+	"http.connection_error_retries":                {kind: "number", max: 1000},
+	"http.connection_error_methods":                {kind: "text", choices: []string{"any", "idempotent"}},
+	"h1.request_timeout_resend":                    {kind: "boolean"},
 	"h1.dropped_body":                              {kind: "text", choices: unreadBody},
 	"h2.dropped_body":                              {kind: "text", choices: unreadBody},
 	"h1.auth_body":                                 {kind: "text", choices: unreadBody},
@@ -575,13 +587,38 @@ func (p Policy) Validate() error {
 	if p.Uint("h2.preface_ping_idle_ms") != 0 && !p.Has("h2.preface_ping_first_id") {
 		return fmt.Errorf("h2.preface_ping_idle_ms requires h2.preface_ping_first_id")
 	}
-	for _, k := range []string{"h2.preface_ping_failed_goaway_code", "h2.preface_ping_failed_retries"} {
-		if p.Has(k) && !p.Has("h2.preface_ping_hung_ms") {
-			return fmt.Errorf("%s requires h2.preface_ping_hung_ms", k)
-		}
+	if p.Has("h2.preface_ping_failed_goaway_code") && !p.Has("h2.preface_ping_hung_ms") {
+		return fmt.Errorf("h2.preface_ping_failed_goaway_code requires h2.preface_ping_hung_ms")
 	}
 	if p.Has("h2.preface_ping_failed_goaway_debug") && !p.Has("h2.preface_ping_failed_goaway_code") {
 		return fmt.Errorf("h2.preface_ping_failed_goaway_debug requires h2.preface_ping_failed_goaway_code")
+	}
+	// A request sent again (Chrome's HttpNetworkTransaction::HandleIOError):
+	// for the failures named, which say it was not processed, as many times
+	// as h2.retries says, and after a lost connection as many times as
+	// http.connection_error_retries says, by the methods it names; neither
+	// says anything without h2.retries.
+	if p.Has("h2.retries") != p.Has("h2.retry_errors") {
+		return fmt.Errorf("h2.retries and h2.retry_errors go together")
+	}
+	if p.Has("h2.retry_delay_ms") && !p.Has("h2.retries") {
+		return fmt.Errorf("h2.retry_delay_ms requires h2.retries")
+	}
+	seen := map[string]bool{}
+	for _, e := range p.Strings("h2.retry_errors") {
+		if !slices.Contains(h2RetryErrors, e) || seen[e] {
+			return fmt.Errorf("h2.retry_errors: unknown or repeated failure %q", e)
+		}
+		seen[e] = true
+	}
+	if seen["ping-failed"] && !p.Has("h2.preface_ping_hung_ms") {
+		return fmt.Errorf("h2.retry_errors names ping-failed while no PING is given up (h2.preface_ping_hung_ms)")
+	}
+	if p.Has("http.connection_error_retries") != p.Has("http.connection_error_methods") {
+		return fmt.Errorf("http.connection_error_retries and http.connection_error_methods go together")
+	}
+	if p.Has("http.connection_error_retries") && !p.Has("h2.retries") {
+		return fmt.Errorf("http.connection_error_retries requires h2.retries")
 	}
 	// An answer drained in the background (Chrome's HttpResponseBodyDrainer)
 	// is drained within both limits, and one awaited until its first bytes
