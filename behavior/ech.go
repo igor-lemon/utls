@@ -33,7 +33,10 @@ var dnsWait = []string{"dns.https_wait_percent", "dns.https_wait_min_ms", "dns.h
 // is the encoding's; the engine puts a session's PSK last in the inner alone,
 // and the reference list in the encoding); the primitives are
 // the engine's; a profile that asks for HTTPS records says how long it waits
-// for them.
+// for them, and asks them with the client of its own that asks the addresses
+// (dns.resolver built-in): the machine's resolver answers addresses alone,
+// from its cache too, and a record asked apart from them came in a window
+// Chrome's never has.
 func validateECH(p Policy) error {
 	on := p.Flag("tls.ech")
 	for _, k := range echLayout {
@@ -85,6 +88,9 @@ func validateECH(p Policy) error {
 		if !records && p.Has(k) {
 			return fmt.Errorf("%s is set while dns.https_records is not", k)
 		}
+	}
+	if records && p.Text("dns.resolver") != "built-in" {
+		return fmt.Errorf("dns.https_records requires dns.resolver built-in")
 	}
 	if p.Flag("dns.https_upgrade") && !records {
 		return fmt.Errorf("dns.https_upgrade requires dns.https_records")
