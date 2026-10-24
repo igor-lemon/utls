@@ -155,3 +155,15 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   `http.connection_error_methods` (`any` or `idempotent`), which need
   `h2.retries`, and `h1.request_timeout_resend`. The cases are tls-forge's
   `TestRetryPolicyIsTypedAndCoherent`; 13 mutants, all killed.
+- `behavior` registers what a request is given and what a browser sent,
+  which tls-forge reads (its `typed.go`, `sent.go`, `browser.go`):
+  `headers.without_context` (`as-given` or `typed-navigation`, the latter
+  needing `headers.browser_context` and `@given`), `@given` in
+  `headers.navigation_order`, `form_order`, `redirected_order` and
+  `restarted_order` (in all four or none, once each), `headers.given_order`
+  (`bytes` or `as-given`) and `headers.given_redirect_drops` (field names in
+  lower case), each needing `@given`; `h2.urgency_weights` (eight weights of
+  at most 255), `headers.sent_priority` (`destination=Priority`, each
+  destination in lower case once, needing the weights) and
+  `headers.renderer_origin_dests`. The cases are tls-forge's
+  `TestGivenFieldsPolicyIsTypedAndCoherent`; 29 mutants, all killed.
