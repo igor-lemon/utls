@@ -841,6 +841,17 @@ func (c *Conn) readFromUntil(r io.Reader, n int) error {
 
 // sendAlertLocked sends a TLS alert message.
 func (c *Conn) sendAlertLocked(err alert) error {
+	// A failed record write has already consumed its nonce. No further TLS
+	// record can be sent safely on this connection, even if the socket later
+	// accepts writes, and writeRecordLocked writes none. Close the underlying
+	// connection without another alert, and say the write's error: an alert
+	// that never went out leaves no local error of its own in c.out.err.
+	// Only a failed write counts: after an alert that was written (a warning,
+	// or a fatal one, whose local error stays in c.out.err) more go out, as
+	// in crypto/tls.
+	if c.isClient && c.utls.failedWrite != nil {
+		return c.utls.failedWrite
+	}
 	if c.quic != nil {
 		return c.out.setErrorLocked(&net.OpError{Op: "local error", Err: err})
 	}
@@ -979,6 +990,12 @@ var outBufPool = sync.Pool{
 // writeRecordLocked writes a TLS record with the given type and payload to the
 // connection and updates the record layer state.
 func (c *Conn) writeRecordLocked(typ recordType, data []byte) (int, error) {
+	// [uTLS] A client writes no record of any type after one whose write
+	// failed: no alert (see sendAlertLocked), no TLS 1.2 renegotiation's
+	// handshake, no answer to a KeyUpdate.
+	if c.isClient && c.utls.failedWrite != nil {
+		return 0, c.utls.failedWrite
+	}
 	if c.quic != nil {
 		if typ != recordTypeHandshake {
 			return 0, errors.New("tls: internal error: sending non-handshake message to QUIC transport")
@@ -1034,6 +1051,7 @@ func (c *Conn) writeRecordLocked(typ recordType, data []byte) (int, error) {
 			return n, err
 		}
 		if _, err := c.write(outBuf); err != nil {
+			c.utls.failedWrite = err // [uTLS] a client writes no record after it
 			return n, err
 		}
 		n += m

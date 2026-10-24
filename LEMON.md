@@ -77,3 +77,36 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   while it finishes, two handshakes at once, the session resumed, the rule
   by case); 27 mutants, 26 killed, and one equivalent (`finishFalseStart`'s
   first look at `falseStarted` before the lock, which saves taking it).
+
+- **No record of a client after one whose write failed**
+  (`Conn.writeRecordLocked` and `Conn.sendAlertLocked` in `conn.go`,
+  `failedWrite` in `u_conn.go`): a record takes its sequence number, and with
+  it its nonce, when it is encrypted, however few of its bytes the socket
+  then takes, so the peer cannot read a record after it (RFC 8446 §5.3).
+  `writeRecordLocked` keeps the error of a write that failed in
+  `c.utls.failedWrite`, and a client writes no record of any type after it:
+  no alert, close_notify included, no TLS 1.2 renegotiation's handshake, no
+  answer to a KeyUpdate. `sendAlertLocked` refuses before it, so that an
+  alert that never went out says the write's error and leaves no local error
+  of its own in `c.out.err`; Close only closes the connection. Every
+  client's, whatever its Config: a rule of the record layer, not a profile's
+  choice; a server is crypto/tls's. It came with net-fp-server's TLS-039
+  (2026-10-21): tls-forge's close_notify at an HTTPS proxy's teardown went
+  out with sequence 10 where 9 was expected; which write failed there was
+  not traced. A first, uncommitted version refused an alert whenever
+  `c.out.err` was set, which an alert that went out sets too (the local
+  error of a fatal one, and of the `no_renegotiation` warning):
+  `TestWarningAlertFlood` hung, all but the first of its 33 warnings never
+  sent, and `TestRenegotiationRejected` and `TestRenegotiateTwiceRejected`
+  lacked the close_notify their recordings end with (2026-10-24). Tests:
+  `TestOnlyAFailedWriteStopsTheAlertsAfterIt` (TLS 1.3 and 1.2: an
+  application write that failed having sent nothing, and seven bytes, then
+  Close; a warning and a fatal alert written, each followed by the
+  close_notify; an alert whose own write failed; a close_notify whose write
+  failed, then an alert refused with the write's error while `c.out.err` is
+  empty; a server), `TestAClientWritesNoRecordAfterAFailedWrite` (a KeyUpdate
+  answered, and after a failed write not, the keys staying and what came
+  after it read all the same; a TLS 1.2 server's HelloRequest answered with
+  a ClientHello, and after a failed write with the write's error at once);
+  10 mutants, all killed (the first version's check among them, by the
+  flood, the two recordings and the written alerts).

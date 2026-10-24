@@ -847,6 +847,10 @@ func (c *Conn) utlsConnectionStateLocked(state *ConnectionState) {
 }
 
 type utlsConnExtraFields struct {
+	// failedWrite is the error of a record whose write failed, guarded by
+	// Conn.out: a client writes no record after it (writeRecordLocked), and
+	// an alert refused says it (sendAlertLocked).
+	failedWrite error
 	// Application Settings (ALPS)
 	peerApplicationSettings      []byte
 	localApplicationSettings     []byte
