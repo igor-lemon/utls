@@ -627,7 +627,10 @@ type ALPNExtension struct {
 func (e *ALPNExtension) writeToUConn(uc *UConn) error {
 	// Do not overwrite NextProtos in config if Encrypted Client Hello is used.
 	// Config ALPN will be written to inner Hello
-	if uc.config.EncryptedClientHelloConfigList == nil {
+	// [uTLS] An offer of the profile's own (offersSpecECH) makes its inner
+	// hello of the outer's extensions, ALPN too, so the server's choice is
+	// held to these protocols whichever hello it answers.
+	if uc.config.EncryptedClientHelloConfigList == nil || uc.config.offersSpecECH() {
 		uc.config.NextProtos = e.AlpnProtocols
 		uc.HandshakeState.Hello.AlpnProtocols = e.AlpnProtocols
 	}

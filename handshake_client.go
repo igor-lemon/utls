@@ -10,7 +10,6 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
-	"crypto/hpke"
 	"crypto/mldsa"
 	"crypto/rsa"
 	"crypto/subtle"
@@ -202,7 +201,7 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *keySharePrivateKeys, *echCli
 		hello.extendedMasterSecret = false
 
 		info := append([]byte("tls ech\x00"), ech.config.raw...)
-		ech.encapsulatedKey, ech.hpkeContext, err = hpke.NewSender(echPK, kdf, aead, info)
+		ech.encapsulatedKey, ech.hpkeContext, err = newECHSender(echConfig, echPK, kdf, aead, info)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -213,7 +212,7 @@ func (c *Conn) makeClientHello() (*clientHelloMsg, *keySharePrivateKeys, *echCli
 
 type echClientContext struct {
 	config          *echConfig
-	hpkeContext     *hpke.Sender
+	hpkeContext     echSealer
 	encapsulatedKey []byte
 	//[uTLS] SECTION START
 	encodedInner []byte
@@ -1213,8 +1212,10 @@ func (c *Conn) verifyServerCertificate(certificates [][]byte) error {
 				opts.CurrentTime = certs[0].NotAfter
 			}
 
+			// The server that refused ECH speaks for the config's public
+			// name, which the outer hello named (RFC 9849 section 6.1.7).
 			if len(c.config.InsecureServerNameToVerify) == 0 {
-				opts.DNSName = c.config.ServerName
+				opts.DNSName = c.serverName
 			} else if c.config.InsecureServerNameToVerify != "*" {
 				opts.DNSName = c.config.InsecureServerNameToVerify
 			}

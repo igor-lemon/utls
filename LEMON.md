@@ -167,3 +167,27 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   destination in lower case once, needing the weights) and
   `headers.renderer_origin_dests`. The cases are tls-forge's
   `TestGivenFieldsPolicyIsTypedAndCoherent`; 29 mutants, all killed.
+- ECH with an inner hello of the profile's own (`u_ech_spec.go`, 2026-10-24,
+  for tls-forge's ECH from DNS HTTPS records): a config whose policy says
+  `tls.ech` offers ECH as Chrome 155's BoringSSL does, measured against a
+  server that opened every inner hello: the outer the spec's to the config's
+  public name, its ECH extension the real one, no `pre_shared_key`; the inner
+  made of the outer's bytes (`innerOf`): the extensions `tls.ech_inner_own`
+  names written for it in the outer's order, the rest of the outer's but
+  `tls.ech_inner_omitted`'s and the padding by reference, a session's PSK
+  last with binders over the inner, suites and versions of
+  `tls.ech_inner_min_version` and up, the outer's session ID, its own
+  random, padded as RFC 9849 says to `tls.ech_padding_block`; config and
+  suite picked by the policy's KEMs, KDFs and AEADs as BoringSSL picks them,
+  public names as BoringSSL takes them; after a HelloRetryRequest both again,
+  the inner random kept, no enc (`helloRetrySpecECH`, a `specECH` branch of
+  `processHelloRetryRequest` after its early-data step, whose sending is
+  `sendHelloRetried` now; the cookie is `cookieForRetry` for both paths). A
+  refusal is checked against the public name (`c.serverName`: it was the
+  config's `ServerName`, the real one), and a server that answers a spec
+  offer in TLS 1.2 refused it (`ECHRejectionError{}` after an ech_required
+  alert): the outer offers TLS 1.2 as the spec does (`supportedVersions`).
+  `behavior/ech.go` registers and validates the keys. Tests
+  `u_ech_spec_test.go` (Chrome's 12 inner hellos made byte for byte from
+  their outers, `testdata/chrome155-ech-hellos.json`; handshakes against
+  crypto/tls's server) and `behavior/ech_test.go`; 101 mutants, all killed.

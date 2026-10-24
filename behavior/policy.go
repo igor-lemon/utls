@@ -154,6 +154,23 @@ var supported = map[string]spec{
 	"headers.browser_base_fields":                  {kind: "texts", max: 1<<62 - 1},
 	"headers.untrusted_prefixes":                   {kind: "texts", max: 1<<62 - 1},
 	"tls.ech_payload_lengths":                      {kind: "numbers"},
+	"tls.ech":                                      {kind: "boolean"},
+	"tls.ech_inner_own":                            {kind: "numbers"},
+	"tls.ech_inner_omitted":                        {kind: "numbers"},
+	"tls.ech_inner_min_version":                    {kind: "number", min: 0x0301, max: 0x0304},
+	"tls.ech_padding_block":                        {kind: "number", max: 255},
+	"tls.ech_kems":                                 {kind: "numbers"},
+	"tls.ech_kdfs":                                 {kind: "numbers"},
+	"tls.ech_aeads":                                {kind: "numbers"},
+	"tls.ech_chacha_without_aes":                   {kind: "boolean"},
+	"tls.ech_outer_psk":                            {kind: "text", choices: []string{"none"}},
+	"tls.ech_retries":                              {kind: "number", max: 8},
+	"tls.ech_retry_without":                        {kind: "boolean"},
+	"dns.https_records":                            {kind: "boolean"},
+	"dns.https_wait_percent":                       {kind: "number", max: 100},
+	"dns.https_wait_min_ms":                        {kind: "number", max: 60000},
+	"dns.https_wait_max_ms":                        {kind: "number", max: 60000},
+	"dns.https_upgrade":                            {kind: "boolean"},
 	"tls.single_use_tickets":                       {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"tls.ticket_age_quantum_ms":                    {kind: "number", min: 0, max: 4294967295, choices: []string{}},
 	"tls.defer_key_update":                         {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
@@ -785,6 +802,9 @@ func (p Policy) Validate() error {
 		return fmt.Errorf("invalid preflight Accept value")
 	}
 
+	if err := validateECH(p); err != nil {
+		return err
+	}
 	if len(p.Strings("http.digest_algorithms")) > 0 && !p.Has("http.digest_cnonce_bytes") {
 		return fmt.Errorf("Digest algorithms require an explicit nonce length")
 	}
