@@ -448,6 +448,16 @@ func runMain(m *testing.M) int {
 		os.Exit(1)
 	}
 
+	// [uTLS SECTION BEGIN]
+	// The recordings were made with Config.Rand deciding every key. Since Go
+	// 1.26 crypto/ecdh, crypto/ecdsa and crypto/rsa pass over a Reader of
+	// the caller's unless GODEBUG=cryptocustomrand=1, the default of a main
+	// module (or go.work) that says go 1.26 or later, as tls-forge's does.
+	// Go 1.26's crypto/tls sets it in its runMain the same way; a toolchain
+	// before 1.26 knows no such setting and passes over it.
+	os.Setenv("GODEBUG", "cryptocustomrand=1,"+os.Getenv("GODEBUG"))
+	// [uTLS SECTION END]
+
 	testConfig = &Config{
 		Time:               func() time.Time { return time.Unix(0, 0) },
 		Rand:               zeroSource{},

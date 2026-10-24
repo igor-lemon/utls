@@ -20,6 +20,21 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 - At the base, upstream as here, `go vet ./...` is clean and `go test ./...`
   passes.
 
+- Under tls-forge's `go.work` (`go 1.26.9`) the test binary takes Go 1.26's
+  GODEBUG defaults, `cryptocustomrand` among them: crypto/ecdh, crypto/ecdsa
+  and crypto/rsa pass over a `Config.Rand` of the caller's, so the client's
+  key share and the server's keys no longer come from `zeroSource` and the
+  recorded handshakes in `testdata/` do not match (`write mismatch`). 64
+  tests failed so, at the base `54318ca` as with this branch's tree, and
+  none with `GOWORK=off`, which takes utls's own `go 1.24` (2026-10-24).
+  `runMain` sets `GODEBUG=cryptocustomrand=1` before any test, as Go 1.26's
+  crypto/tls does in its own; a toolchain before 1.26 passes over the
+  setting; taken out, the 64 fail again. Nothing outside the tests changes:
+  a Config's keys are drawn as crypto/tls 1.26 draws them. Both ways pass:
+
+      GOWORK="$PWD/../../tls-forge/go.work" go test ./... -count=1
+      GOWORK=off go test ./... -count=1
+
 ## Patches
 
 - **A parrot's second flight in as few records as it fits in**
