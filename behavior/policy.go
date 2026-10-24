@@ -93,6 +93,7 @@ var supported = map[string]spec{
 	"headers.range_cache_control":                  {kind: "text", max: 1<<32 - 1},
 	"headers.range_accept_encoding":                {kind: "text", max: 1<<32 - 1},
 	"headers.navigation_fetch_user":                {kind: "text", max: 1<<32 - 1},
+	"headers.reload_cache_control":                 {kind: "text", max: 1<<32 - 1},
 	"headers.storage_access":                       {kind: "text", max: 1<<32 - 1},
 	"headers.cookie_after":                         {kind: "text", max: 1<<32 - 1},
 	"headers.redirected_hints_after":               {kind: "text", max: 1<<32 - 1},
@@ -289,6 +290,7 @@ var supported = map[string]spec{
 	"headers.preflight_order":                      {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
 	"headers.navigation_order":                     {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
 	"headers.form_order":                           {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
+	"headers.form_reload_order":                    {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
 	"headers.restarted_order":                      {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
 	"headers.redirected_order":                     {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
 }
@@ -575,6 +577,17 @@ func (p Policy) Validate() error {
 				return fmt.Errorf("%s is missing ALPS anchor %s", key, anchor)
 			}
 		}
+		if p.Has("headers.form_reload_order") && !slices.Contains(p.Strings("headers.form_reload_order"), anchor) {
+			return fmt.Errorf("headers.form_reload_order is missing ALPS anchor %s", anchor)
+		}
+	}
+	// A page reloaded as Ctrl+R reloads it asks for itself afresh, says the
+	// person asked (Sec-Fetch-User) and posts a form again in an order of its
+	// own: the three are said together.
+	if p.Has("headers.reload_cache_control") != p.Has("headers.form_reload_order") ||
+		p.Has("headers.reload_cache_control") && !p.Has("headers.navigation_fetch_user") {
+		return fmt.Errorf("headers.reload_cache_control, headers.form_reload_order and headers.navigation_fetch_user " +
+			"are said together")
 	}
 	for _, k := range []string{"tcp.keepalive_idle_seconds", "tcp.keepalive_interval_seconds", "tcp.keepalive_count"} {
 		if p.Has(k) && !p.Has("tcp.keepalive") {
