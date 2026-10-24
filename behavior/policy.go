@@ -45,6 +45,11 @@ var unreadBodies = []string{"h1.dropped_body", "h2.dropped_body", "h1.auth_body"
 // PING.
 var h2RetryErrors = []string{"refused-stream", "goaway-no-error", "goaway-error", "ping-failed"}
 
+// givenOrders are the orders of a page's requests in which @given stands for
+// the fields a request was given that Chrome has no slot of its own for,
+// where Chrome driven over DevTools writes the extra headers it is given.
+var givenOrders = []string{"headers.navigation_order", "headers.form_order", "headers.redirected_order", "headers.restarted_order"}
+
 var supported = map[string]spec{
 	"http.zero_content_length_methods":             {kind: "methods"},
 	"http.content_length_empty_body":               {kind: "boolean"},
@@ -237,6 +242,12 @@ var supported = map[string]spec{
 	"headers.default_referrer_policy":              {kind: "text", min: 0, max: 4294967295, choices: []string{}},
 	"headers.h1_prefix":                            {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
 	"headers.alps_after":                           {kind: "text", min: 0, max: 4294967295, choices: []string{}},
+	"headers.without_context":                      {kind: "text", min: 0, max: 4294967295, choices: []string{"as-given", "typed-navigation"}},
+	"headers.given_order":                          {kind: "text", min: 0, max: 4294967295, choices: []string{"bytes", "as-given"}},
+	"headers.given_redirect_drops":                 {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
+	"headers.sent_priority":                        {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
+	"headers.renderer_origin_dests":                {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
+	"h2.urgency_weights":                           {kind: "numbers", min: 0, max: 4294967295, choices: []string{}},
 	"proxy.forward_http":                           {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"proxy.profile_tls":                            {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"proxy.connect_header_order":                   {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
@@ -619,6 +630,64 @@ func (p Policy) Validate() error {
 	}
 	if p.Has("http.connection_error_retries") && !p.Has("h2.retries") {
 		return fmt.Errorf("http.connection_error_retries requires h2.retries")
+	}
+	// The fields a request is given that Chrome has no slot of its own for
+	// go where @given stands: where one order of a page's request names it,
+	// every one does, once. How they are ordered there and what a redirect
+	// takes of them are said only with it, and a request without a browser
+	// context is a typed navigation only where they have a place.
+	marked := 0
+	for _, key := range givenOrders {
+		switch n := len(slices.DeleteFunc(slices.Clone(p.Strings(key)), func(s string) bool { return s != "@given" })); {
+		case n > 1:
+			return fmt.Errorf("%s names @given more than once", key)
+		case n == 1:
+			marked++
+		}
+	}
+	if marked != 0 && marked != len(givenOrders) {
+		return fmt.Errorf("@given is in some of %s and not in all", strings.Join(givenOrders, ", "))
+	}
+	for _, k := range []string{"headers.given_order", "headers.given_redirect_drops"} {
+		if p.Has(k) && marked == 0 {
+			return fmt.Errorf("%s requires @given in %s", k, strings.Join(givenOrders, ", "))
+		}
+	}
+	if p.Text("headers.without_context") == "typed-navigation" {
+		if !p.Flag("headers.browser_context") {
+			return fmt.Errorf("headers.without_context typed-navigation requires headers.browser_context")
+		}
+		if marked == 0 {
+			return fmt.Errorf("headers.without_context typed-navigation requires @given in %s", strings.Join(givenOrders, ", "))
+		}
+	}
+	for _, name := range p.Strings("headers.given_redirect_drops") {
+		if name == "" || name != strings.ToLower(name) || strings.ContainsAny(name, " \t:@\r\n\x00") {
+			return fmt.Errorf("headers.given_redirect_drops: %q is not a field name in lower case", name)
+		}
+	}
+	// The Priority a browser's request has over HTTP/2 by what it is for
+	// (Sec-Fetch-Dest), when it came without one, as over HTTP/1.1 it does,
+	// and the weight of its HEADERS frame by its urgency (RFC 9218), from 0.
+	if len(p.Numbers("h2.urgency_weights")) != 0 && len(p.Numbers("h2.urgency_weights")) != 8 {
+		return fmt.Errorf("h2.urgency_weights says a weight for each urgency, 0 to 7")
+	}
+	for _, w := range p.Numbers("h2.urgency_weights") {
+		if w > 255 {
+			return fmt.Errorf("h2.urgency_weights: %d is no weight on the wire", w)
+		}
+	}
+	if p.Has("headers.sent_priority") && len(p.Numbers("h2.urgency_weights")) == 0 {
+		return fmt.Errorf("headers.sent_priority requires h2.urgency_weights")
+	}
+	dests := map[string]bool{}
+	for _, entry := range p.Strings("headers.sent_priority") {
+		dest, _, ok := strings.Cut(entry, "=")
+		if !ok || dest == "" || dests[dest] || dest != strings.ToLower(dest) || strings.ContainsAny(entry, "\r\n\x00") ||
+			strings.ContainsAny(dest, " \t,;") {
+			return fmt.Errorf("headers.sent_priority: %q is not a destination=Priority said once", entry)
+		}
+		dests[dest] = true
 	}
 	// An answer drained in the background (Chrome's HttpResponseBodyDrainer)
 	// is drained within both limits, and one awaited until its first bytes
