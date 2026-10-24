@@ -12,7 +12,7 @@ const chromeECH = `{"tls.ech": true, "tls.ech_inner_own": [0, 43, 65037],
  "tls.ech_padding_block": 32, "tls.ech_kems": [32], "tls.ech_kdfs": [1], "tls.ech_aeads": [1, 2, 3],
  "tls.ech_chacha_without_aes": true, "tls.ech_outer_psk": "none", "tls.ech_retries": 1,
  "tls.ech_retry_without": true, "dns.https_records": true, "dns.https_wait_percent": 20,
- "dns.https_wait_min_ms": 5, "dns.https_wait_max_ms": 50, "dns.https_upgrade": true}`
+ "dns.https_wait_min_ms": 5, "dns.https_wait_max_ms": 50, "dns.https_upgrade": true, "dns.resolver": "built-in"}`
 
 func TestECHPolicyIsTypedAndCoherent(t *testing.T) {
 	var base Policy
@@ -60,6 +60,15 @@ func TestECHPolicyIsTypedAndCoherent(t *testing.T) {
 			"dns.https_wait_min_ms": "", "dns.https_wait_max_ms": ""}, "dns.https_upgrade requires dns.https_records"},
 		{"no upgrade, no records", map[string]string{"dns.https_records": "", "dns.https_wait_percent": "",
 			"dns.https_wait_min_ms": "", "dns.https_wait_max_ms": "", "dns.https_upgrade": "false"}, ""},
+		{"records the machine's resolver asks", map[string]string{"dns.resolver": `"system"`},
+			"dns.https_records requires dns.resolver built-in"},
+		{"records with no resolver said", map[string]string{"dns.resolver": ""},
+			"dns.https_records requires dns.resolver built-in"},
+		{"an unknown resolver", map[string]string{"dns.resolver": `"getaddrinfo"`}, "unsupported primitive"},
+		{"the built-in resolver without records", map[string]string{"dns.https_records": "", "dns.https_wait_percent": "",
+			"dns.https_wait_min_ms": "", "dns.https_wait_max_ms": "", "dns.https_upgrade": ""}, ""},
+		{"the machine's resolver without records", map[string]string{"dns.https_records": "", "dns.https_wait_percent": "",
+			"dns.https_wait_min_ms": "", "dns.https_wait_max_ms": "", "dns.https_upgrade": "", "dns.resolver": `"system"`}, ""},
 		{"a floor above the ceiling", map[string]string{"dns.https_wait_min_ms": "60"}, "exceeds"},
 		{"a floor that is the ceiling", map[string]string{"dns.https_wait_min_ms": "50"}, ""},
 		{"no ceiling", map[string]string{"dns.https_wait_max_ms": "0", "dns.https_wait_min_ms": "60"}, ""},

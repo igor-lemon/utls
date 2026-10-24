@@ -191,3 +191,8 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   `u_ech_spec_test.go` (Chrome's 12 inner hellos made byte for byte from
   their outers, `testdata/chrome155-ech-hellos.json`; handshakes against
   crypto/tls's server) and `behavior/ech_test.go`; 101 mutants, all killed.
+  `dns.resolver` (2026-10-25, `system` or `built-in`: who asks a direct
+  connection's names, the machine's resolver or a client of tls-forge's own,
+  as Chrome's built-in DNS client asks them) is registered with them;
+  `dns.https_records` needs `built-in`, as a record asked apart from
+  addresses a cache answers comes after the wait. 5 mutants, all killed.

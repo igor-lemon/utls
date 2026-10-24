@@ -171,6 +171,7 @@ var supported = map[string]spec{
 	"dns.https_wait_min_ms":                        {kind: "number", max: 60000},
 	"dns.https_wait_max_ms":                        {kind: "number", max: 60000},
 	"dns.https_upgrade":                            {kind: "boolean"},
+	"dns.resolver":                                 {kind: "text", choices: []string{"system", "built-in"}},
 	"tls.single_use_tickets":                       {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"tls.ticket_age_quantum_ms":                    {kind: "number", min: 0, max: 4294967295, choices: []string{}},
 	"tls.defer_key_update":                         {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
