@@ -157,6 +157,65 @@ func (c *chromeFailedRecordConn) Write(p []byte) (int, error) {
 	return c.Conn.Write(p)
 }
 
+// TestADeferredKeyUpdateAnswerGoesNowhereAfterAFailedWrite holds the answer
+// "tls.defer_key_update" puts off to the rule of
+// TestAClientWritesNoRecordAfterAFailedWrite. Read, the KeyUpdate writes
+// nothing and leaves the keys; the client's next write sends the answer
+// first, under the keys it had, and goes on under the next; after a failed
+// write the answer never goes out, the keys staying. An answer whose own
+// write fails takes the write it came with along: neither that nor anything
+// after it goes out.
+func TestADeferredKeyUpdateAnswerGoesNowhereAfterAFailedWrite(t *testing.T) {
+	for _, failed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("failed=%v", failed), func(t *testing.T) {
+			client, server, wrapped := overAFailingConn(t, VersionTLS13, true)
+			client.config.Behavior = behavior.Policy{"tls.defer_key_update": []byte("true")}
+			if failed {
+				failAWrite(t, client, wrapped)
+			}
+			before := wrapped.writes.Load()
+			keys := bytes.Clone(client.out.trafficSecret)
+			askForAKeyUpdate(t, client, server)
+			answered := wrapped.writes.Load() - before
+			moved := !bytes.Equal(client.out.trafficSecret, keys)
+			if answered != 0 || moved {
+				t.Fatalf("reading the KeyUpdate wrote %d records, keys moved on %v; want the answer put off", answered, moved)
+			}
+			_, err := client.Write([]byte("more"))
+			answered = wrapped.writes.Load() - before
+			moved = !bytes.Equal(client.out.trafficSecret, keys)
+			if failed && (!errors.Is(err, errWriteFailed) || answered != 0 || moved) {
+				t.Fatalf("the next write said %v, %d records written, keys moved on %v; want the failed write's error, none and no", err, answered, moved)
+			}
+			if !failed && (err != nil || answered != 2 || !moved) {
+				t.Fatalf("the next write said %v, %d records written, keys moved on %v; want the answer, then it, under the next keys", err, answered, moved)
+			}
+		})
+	}
+	t.Run("answer failed", func(t *testing.T) {
+		client, server, wrapped := overAFailingConn(t, VersionTLS13, true)
+		client.config.Behavior = behavior.Policy{"tls.defer_key_update": []byte("true")}
+		askForAKeyUpdate(t, client, server)
+		before := wrapped.writes.Load()
+		keys := bytes.Clone(client.out.trafficSecret)
+		wrapped.fail.Store(true)
+		if _, err := client.Write([]byte("more")); !errors.Is(err, errWriteFailed) {
+			t.Fatalf("a write whose deferred answer failed said %v, want the answer's error", err)
+		}
+		if got := wrapped.writes.Load() - before; got != 1 {
+			t.Fatalf("%d writes, want the answer's alone: the data went after a record whose write failed", got)
+		}
+		if !bytes.Equal(client.out.trafficSecret, keys) {
+			t.Fatal("the keys moved on for an answer that never went out")
+		}
+		before = wrapped.writes.Load()
+		client.Close()
+		if wrapped.writes.Load() != before {
+			t.Fatal("a close_notify went out after the deferred answer's write failed")
+		}
+	})
+}
+
 func TestChromeUnofferedALPNAlertReachesTheWire(t *testing.T) {
 	for _, chrome := range []bool{false, true} {
 		t.Run(fmt.Sprint(chrome), func(t *testing.T) {
