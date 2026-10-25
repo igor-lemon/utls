@@ -172,6 +172,20 @@ var supported = map[string]spec{
 	"dns.https_wait_max_ms":                        {kind: "number", max: 60000},
 	"dns.https_upgrade":                            {kind: "boolean"},
 	"dns.resolver":                                 {kind: "text", choices: []string{"system", "built-in"}},
+	"dns.https_h3":                                 {kind: "boolean"},
+	"quic.tcp_wait_cold_ms":                        {kind: "number", max: 60000},
+	"quic.tcp_wait_broken_ms":                      {kind: "number", max: 60000},
+	"quic.tcp_wait_rtt_percent":                    {kind: "number", max: 1000},
+	"quic.tcp_wait_default_ms":                     {kind: "number", max: 60000},
+	"quic.tcp_wait_extra_ms":                       {kind: "number", max: 60000},
+	"quic.tcp_wait_max_ms":                         {kind: "number", max: 60000},
+	"quic.tcp_waits_with_connection":               {kind: "boolean"},
+	"quic.broken_ms":                               {kind: "number", min: 1, max: 86400000},
+	"quic.broken_doublings":                        {kind: "number", max: 62},
+	"quic.broken_max_ms":                           {kind: "number", min: 1, max: 31536000000},
+	"quic.broken_recent_max":                       {kind: "number", min: 1, max: 100000},
+	"quic.server_rtts_max":                         {kind: "number", min: 1, max: 100000},
+	"http.unused_idle_connection_timeout_ms":       {kind: "number", max: 86400000},
 	"tls.single_use_tickets":                       {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"tls.ticket_age_quantum_ms":                    {kind: "number", min: 0, max: 4294967295, choices: []string{}},
 	"tls.defer_key_update":                         {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
@@ -804,6 +818,9 @@ func (p Policy) Validate() error {
 	}
 
 	if err := validateECH(p); err != nil {
+		return err
+	}
+	if err := validateDNSH3(p); err != nil {
 		return err
 	}
 	if len(p.Strings("http.digest_algorithms")) > 0 && !p.Has("http.digest_cnonce_bytes") {
