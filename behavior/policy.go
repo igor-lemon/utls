@@ -184,6 +184,7 @@ var supported = map[string]spec{
 	"quic.tcp_wait_extra_ms":                       {kind: "number", max: 60000},
 	"quic.tcp_wait_max_ms":                         {kind: "number", max: 60000},
 	"quic.tcp_waits_with_connection":               {kind: "boolean"},
+	"quic.retry_over_tcp":                          {kind: "boolean"},
 	"quic.broken_ms":                               {kind: "number", min: 1, max: 86400000},
 	"quic.broken_doublings":                        {kind: "number", max: 62},
 	"quic.broken_max_ms":                           {kind: "number", min: 1, max: 31536000000},

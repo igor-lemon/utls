@@ -239,3 +239,6 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   settings by the ServerHello's ALPN, which TLS 1.3 leaves empty; it takes
   `clientProtocol` now. Tests `u_alps_server_test.go` (TCP and QUIC, the
   codepoints, resumption, a client certificate asked for).
+- `quic.retry_over_tcp` (2026-10-25, `behavior/h3dns.go`), one of the keys
+  `dns.https_h3` needs: a request its QUIC connection failed before its
+  answer goes again over TCP (tls-client).

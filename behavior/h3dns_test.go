@@ -10,7 +10,7 @@ import (
 // laid over its ECH and DNS policy and the frozen Chromium data's QUIC.
 const chromeDNSH3 = `{"dns.https_h3": true, "quic.tcp_wait_cold_ms": 0, "quic.tcp_wait_broken_ms": 0,
  "quic.tcp_wait_rtt_percent": 150, "quic.tcp_wait_default_ms": 300, "quic.tcp_wait_extra_ms": 0,
- "quic.tcp_wait_max_ms": 3000, "quic.tcp_waits_with_connection": false, "quic.broken_ms": 300000,
+ "quic.tcp_wait_max_ms": 3000, "quic.tcp_waits_with_connection": false, "quic.retry_over_tcp": true, "quic.broken_ms": 300000,
  "quic.broken_doublings": 18, "quic.broken_max_ms": 172800000, "quic.broken_recent_max": 200,
  "quic.server_rtts_max": 500, "http.unused_idle_connection_timeout_ms": 60000}`
 
@@ -44,6 +44,8 @@ func TestDNSH3PolicyIsTypedAndCoherent(t *testing.T) {
 			"dns.https_wait_min_ms": "", "dns.https_wait_max_ms": "", "dns.https_upgrade": ""}, "dns.https_h3 requires dns.https_records"},
 		{"no QUIC", map[string]string{"quic.enabled": "false"}, "dns.https_h3 requires quic.enabled"},
 		{"no cold wait said", map[string]string{"quic.tcp_wait_cold_ms": ""}, "dns.https_h3 requires quic.tcp_wait_cold_ms"},
+		{"no retry over TCP said", map[string]string{"quic.retry_over_tcp": ""}, "dns.https_h3 requires quic.retry_over_tcp"},
+		{"no retry over TCP", map[string]string{"quic.retry_over_tcp": "false"}, ""},
 		{"no unused timeout said", map[string]string{"http.unused_idle_connection_timeout_ms": ""},
 			"dns.https_h3 requires http.unused_idle_connection_timeout_ms"},
 		{"a wait past a minute", map[string]string{"quic.tcp_wait_max_ms": "60001"}, "must be in"},
