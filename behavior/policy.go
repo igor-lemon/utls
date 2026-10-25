@@ -191,6 +191,10 @@ var supported = map[string]spec{
 	"quic.broken_recent_max":                       {kind: "number", min: 1, max: 100000},
 	"quic.server_rtts_max":                         {kind: "number", min: 1, max: 100000},
 	"http.unused_idle_connection_timeout_ms":       {kind: "number", max: 86400000},
+	"quic.alt_svc":                                 {kind: "boolean"},
+	"quic.alt_svc_user_ports":                      {kind: "boolean"},
+	"quic.alt_svc_remote_hosts":                    {kind: "boolean"},
+	"quic.alt_svc_tcp_waits_with_h2":               {kind: "boolean"},
 	"quic.packet_numbers":                          {kind: "text", choices: []string{"separate", "shared"}},
 	"quic.first_packet_number":                     {kind: "number", max: 1 << 20},
 	"quic.packet_number_length":                    {kind: "text", choices: []string{"two-byte-minimum", "window"}},
@@ -876,6 +880,9 @@ func (p Policy) Validate() error {
 		return err
 	}
 	if err := validateDNSH3(p); err != nil {
+		return err
+	}
+	if err := validateAltSvc(p); err != nil {
 		return err
 	}
 	if err := validateQUICHandshake(p); err != nil {
