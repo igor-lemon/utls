@@ -196,3 +196,15 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   as Chrome's built-in DNS client asks them) is registered with them;
   `dns.https_records` needs `built-in`, as a record asked apart from
   addresses a cache answers comes after the wait. 5 mutants, all killed.
+- `behavior` registers `dns.https_h3` (2026-10-25), which sends a direct
+  https request whose name's HTTPS record names h3 over HTTP/3 as Chrome's
+  DNS ALPN job sends it, with `quic.tcp_wait_cold_ms`, `_broken_ms`,
+  `_rtt_percent`, `_default_ms`, `_extra_ms` and `_max_ms` (how long TCP
+  waits behind QUIC), `quic.tcp_waits_with_connection`, `quic.broken_ms`,
+  `_doublings` and `_max_ms`, `quic.broken_recent_max`,
+  `quic.server_rtts_max` and `http.unused_idle_connection_timeout_ms`,
+  held together by `behavior/h3dns.go` (`dns.https_h3` needs
+  `dns.https_records`, `quic.enabled` and every key, none is set without it,
+  a first break no longer than the longest). tls-client's `dnsh3.go` and
+  `quicstate.go` read them. Test `behavior/h3dns_test.go`; 14 mutants, all
+  killed.
