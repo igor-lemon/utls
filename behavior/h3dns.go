@@ -4,12 +4,13 @@ import "fmt"
 
 // dnsH3 are the keys that say how a request goes over HTTP/3 where the HTTPS
 // record its connection takes names h3 (dns.https_h3): how long TCP waits
-// behind QUIC, for how long QUIC is not tried again after it failed where TCP
-// did not, how many servers' breaks and RTTs are remembered, and how long a
-// TCP connection that lost to QUIC is kept unused.
+// behind QUIC, whether a request a QUIC connection failed before its answer
+// goes again over TCP, for how long QUIC is not tried again after it failed
+// where TCP did not, how many servers' breaks and RTTs are remembered, and
+// how long a TCP connection that lost to QUIC is kept unused.
 var dnsH3 = []string{"quic.tcp_wait_cold_ms", "quic.tcp_wait_broken_ms", "quic.tcp_wait_rtt_percent",
 	"quic.tcp_wait_default_ms", "quic.tcp_wait_extra_ms", "quic.tcp_wait_max_ms", "quic.tcp_waits_with_connection",
-	"quic.broken_ms", "quic.broken_doublings", "quic.broken_max_ms", "quic.broken_recent_max",
+	"quic.retry_over_tcp", "quic.broken_ms", "quic.broken_doublings", "quic.broken_max_ms", "quic.broken_recent_max",
 	"quic.server_rtts_max", "http.unused_idle_connection_timeout_ms"}
 
 // validateDNSH3 holds dns.https_h3 to what the engine can do: it reads the
