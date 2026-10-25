@@ -159,7 +159,9 @@ func (hs *clientHandshakeStateTLS13) utlsReadServerParameters(encryptedExtension
 		}
 
 		// Check if the ALPN selected by the server exists in the client's list.
-		if alps, ok := hs.uconn.config.ApplicationSettings[hs.serverHello.alpnProtocol]; ok {
+		// [uTLS] In TLS 1.3 the protocol is in EncryptedExtensions, not the
+		// ServerHello, which says none.
+		if alps, ok := hs.uconn.config.ApplicationSettings[hs.uconn.clientProtocol]; ok {
 			hs.c.utls.localApplicationSettings = alps
 		} else {
 			// return errors.New("tls: server selected ALPN doesn't match a client ALPS")

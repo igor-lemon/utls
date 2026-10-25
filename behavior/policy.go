@@ -24,6 +24,10 @@ type spec struct {
 	kind     string
 	min, max uint64
 	choices  []string
+	// holes are the placeholders of a template (kind "template", under the
+	// key ""), or of each template of a set, by the condition each is for
+	// (kind "templates", every one of them needed)
+	holes map[string][]string
 }
 
 // unreadBody are the ways an answer a request goes on from without reading
@@ -186,6 +190,49 @@ var supported = map[string]spec{
 	"quic.broken_recent_max":                       {kind: "number", min: 1, max: 100000},
 	"quic.server_rtts_max":                         {kind: "number", min: 1, max: 100000},
 	"http.unused_idle_connection_timeout_ms":       {kind: "number", max: 86400000},
+	"quic.packet_numbers":                          {kind: "text", choices: []string{"separate", "shared"}},
+	"quic.first_packet_number":                     {kind: "number", max: 1 << 20},
+	"quic.packet_number_length":                    {kind: "text", choices: []string{"two-byte-minimum", "window"}},
+	"quic.pto_skip":                                {kind: "text", choices: []string{"application", "every-space"}},
+	"quic.pto_probes":                              {kind: "number", min: 1, max: 2},
+	"quic.pto_initial_rtt_ms":                      {kind: "number", min: 1, max: 10000},
+	"quic.pto_no_sample_multiplier":                {kind: "number", min: 1, max: 10},
+	"quic.pto_no_sample_min_ms":                    {kind: "number", max: 10000},
+	"quic.pto_rttvar_multiplier":                   {kind: "number", min: 1, max: 8},
+	"quic.alarm_slack_ms":                          {kind: "number", max: 1000},
+	"quic.handshake_idle_timeout_ms":               {kind: "number", min: 1, max: 600000},
+	"quic.handshake_timeout_ms":                    {kind: "number", min: 1, max: 600000},
+	"quic.handshake_ack_timer_ms":                  {kind: "number", max: 1000},
+	"quic.idle_close":                              {kind: "text", choices: []string{"silent", "after-pto"}},
+	"quic.idle_close_code":                         {kind: "number", max: 1<<62 - 1},
+	"quic.idle_close_reason":                       {kind: "quic-reason", max: 1024},
+	"quic.handshake_idle_close_reason":             {kind: "quic-reason", max: 1024},
+	"quic.undecryptable_level_names":               {kind: "texts"},
+	"quic.initial_layout":                          {kind: "text", choices: []string{"scramble", "chaos"}},
+	"quic.chaos_first_frame_min":                   {kind: "number", min: 1, max: 1024},
+	"quic.chaos_first_frame_spread":                {kind: "number", min: 1, max: 1024},
+	"quic.chaos_crypto_splits_min":                 {kind: "number", max: 64},
+	"quic.chaos_crypto_splits_max":                 {kind: "number", max: 64},
+	"quic.chaos_pings_min":                         {kind: "number", max: 64},
+	"quic.chaos_pings_max":                         {kind: "number", max: 64},
+	"quic.padding_position":                        {kind: "text", choices: []string{"after-ack", "end"}},
+	"quic.connected_socket":                        {kind: "boolean"},
+	"quic.alps_protocols":                          {kind: "texts"},
+	"quic.close_early_application":                 {kind: "text", choices: []string{"transport", "application"}},
+	"h3.alps_reader":                               {kind: "text", choices: []string{"quiche"}},
+	"h3.alps_origin_frames":                        {kind: "text", choices: []string{"skip", "read", "abandon"}},
+	"h3.alps_close_space":                          {kind: "text", choices: []string{"transport", "application"}},
+	"h3.alps_close_code":                           {kind: "number", max: 1<<62 - 1},
+	"h3.alps_close_frame_type":                     {kind: "number", max: 1<<62 - 1},
+	"h3.alps_close_reason":                         {kind: "template", max: 1024, holes: map[string][]string{"": {"detail"}}},
+	"h3.alps_errors":                               {kind: "templates", max: 1024, holes: alpsErrors},
+	"h3.peer_settings":                             {kind: "text", choices: []string{"quiche"}},
+	"h3.settings_close_space":                      {kind: "text", choices: []string{"transport", "application"}},
+	"h3.settings_close_code":                       {kind: "number", max: 1<<62 - 1},
+	"h3.settings_errors":                           {kind: "templates", max: 1024, holes: settingsErrors},
+	"h3.settings_http2":                            {kind: "numbers"},
+	"h3.settings_boolean":                          {kind: "numbers"},
+	"h3.settings_boolean_names":                    {kind: "texts"},
 	"tls.single_use_tickets":                       {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"tls.ticket_age_quantum_ms":                    {kind: "number", min: 0, max: 4294967295, choices: []string{}},
 	"tls.defer_key_update":                         {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
@@ -372,6 +419,13 @@ func (p Policy) Text(k string) string        { var v string; _ = json.Unmarshal(
 func (p Policy) Strings(k string) []string   { var v []string; _ = json.Unmarshal(p[k], &v); return v }
 func (p Policy) Numbers(k string) []uint64   { var v []uint64; _ = json.Unmarshal(p[k], &v); return v }
 func (p Policy) Settings(k string) []Setting { var v []Setting; _ = json.Unmarshal(p[k], &v); return v }
+
+// Templates is a set of templates by the condition each is for.
+func (p Policy) Templates(k string) map[string]string {
+	var v map[string]string
+	_ = json.Unmarshal(p[k], &v)
+	return v
+}
 func (p Policy) Validate() error {
 	for k, raw := range p {
 		s, ok := supported[k]
@@ -392,7 +446,7 @@ func (p Policy) Validate() error {
 			if err == nil && (v < s.min || v > s.max) {
 				err = fmt.Errorf("must be in [%d,%d]", s.min, s.max)
 			}
-		case "text", "qpack-reason", "qpack-reason-stream":
+		case "text", "qpack-reason", "qpack-reason-stream", "quic-reason":
 			var v string
 			err = json.Unmarshal(raw, &v)
 			if err == nil && s.max > 0 && uint64(len(v)) > s.max {
@@ -410,9 +464,14 @@ func (p Policy) Validate() error {
 					err = fmt.Errorf("unsupported diagnostic placeholder")
 				}
 			}
+			if err == nil && s.kind == "quic-reason" {
+				_, err = QUICReason(v, QUICReasonValues{})
+			}
 			if err == nil && len(s.choices) > 0 && !slices.Contains(s.choices, v) {
 				err = fmt.Errorf("unsupported primitive %q", v)
 			}
+		case "template", "templates":
+			err = validTemplates(raw, s)
 		case "methods":
 			var methods []string
 			err = json.Unmarshal(raw, &methods)
@@ -515,11 +574,6 @@ func (p Policy) Validate() error {
 			if v > 65535 {
 				return fmt.Errorf("%s contains an out-of-range identifier", k)
 			}
-		}
-	}
-	for _, id := range p.Numbers("quic.preserve_extensions") {
-		if id == 17513 || id == 17613 {
-			return fmt.Errorf("HTTP3 ALPS bootstrap API is unavailable")
 		}
 	}
 	if p.Has("h3.grease_setting_n_min") && p.Uint("h3.grease_setting_n_min") > p.Uint("h3.grease_setting_n_max") {
@@ -821,6 +875,12 @@ func (p Policy) Validate() error {
 		return err
 	}
 	if err := validateDNSH3(p); err != nil {
+		return err
+	}
+	if err := validateQUICHandshake(p); err != nil {
+		return err
+	}
+	if err := validateALPS(p); err != nil {
 		return err
 	}
 	if len(p.Strings("http.digest_algorithms")) > 0 && !p.Has("http.digest_cnonce_bytes") {

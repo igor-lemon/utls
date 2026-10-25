@@ -1112,6 +1112,15 @@ func (m *encryptedExtensionsMsg) marshal() ([]byte, error) {
 					b.AddBytes(m.echRetryConfigs)
 				})
 			}
+			// [UTLS SECTION START]
+			if m.utls.applicationSettingsCodepoint != 0 {
+				// a server's ALPS (u_alps_server.go)
+				b.AddUint16(m.utls.applicationSettingsCodepoint)
+				b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) {
+					b.AddBytes(m.utls.applicationSettings)
+				})
+			}
+			// [UTLS SECTION END]
 		})
 	})
 

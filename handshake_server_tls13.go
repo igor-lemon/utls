@@ -92,6 +92,9 @@ func (hs *serverHandshakeStateTLS13) handshake() error {
 	if _, err := c.flush(); err != nil {
 		return err
 	}
+	if err := hs.readClientEncryptedExtensions(); err != nil { // [uTLS]
+		return err
+	}
 	if err := hs.readClientCertificate(); err != nil {
 		return err
 	}
@@ -808,6 +811,7 @@ func (hs *serverHandshakeStateTLS13) sendServerParameters() error {
 			return err
 		}
 	}
+	hs.serverALPS(encryptedExtensions) // [uTLS]
 
 	if _, err := hs.c.writeHandshakeRecord(encryptedExtensions, hs.transcript); err != nil {
 		return err
@@ -930,7 +934,9 @@ func (hs *serverHandshakeStateTLS13) sendServerFinished() error {
 	// If we did not request client certificates, at this point we can
 	// precompute the client finished and roll the transcript forward to send
 	// session tickets in our first flight.
-	if !hs.requestClientCert() {
+	// [uTLS] Not with ALPS: the client's EncryptedExtensions come before its
+	// Finished (readClientEncryptedExtensions).
+	if !hs.requestClientCert() && c.utls.applicationSettingsCodepoint == 0 {
 		if err := hs.sendSessionTickets(); err != nil {
 			return err
 		}

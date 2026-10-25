@@ -208,3 +208,34 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   a first break no longer than the longest). tls-client's `dnsh3.go` and
   `quicstate.go` read them. Test `behavior/h3dns_test.go`; 14 mutants, all
   killed.
+- `behavior` registers a QUIC client's handshake as Chrome 155's (2026-10-25):
+  `quic.packet_numbers` (`shared`: one counter for the three spaces),
+  `quic.first_packet_number`, `quic.packet_number_length` (`window`,
+  quiche's `UpdatePacketNumberLength`), `quic.pto_skip`, `quic.pto_probes`,
+  `quic.pto_*` of the probe timeout, `quic.alarm_slack_ms`,
+  `quic.handshake_idle_timeout_ms`, `quic.handshake_timeout_ms`,
+  `quic.handshake_ack_timer_ms`, `quic.idle_close` with its code, reasons and
+  `quic.undecryptable_level_names` (kind `quic-reason`: `QUICReason` writes
+  quiche's `QuicTime::Delta`), `quic.initial_layout` (`chaos`, with
+  `quic.chaos_*`), `quic.padding_position`, `quic.connected_socket`, held
+  together by `behavior/quic.go`. And ALPS for HTTP/3: `quic.alps_protocols`
+  with 17613 or 17513 kept in `quic.preserve_extensions` (which refused both
+  as "HTTP3 ALPS bootstrap API is unavailable"), `h3.alps_reader`,
+  `h3.alps_origin_frames`, `h3.alps_close_*`, `h3.alps_errors`,
+  `h3.peer_settings`, `h3.settings_*`, `quic.close_early_application`
+  (`behavior/alps.go`: kinds `template` and `templates`, a set of templates by
+  condition, read in one pass that refuses a key said twice; `Template`).
+  quic-go-utls and tls-client read them. Tests `behavior/quic_test.go`,
+  `behavior/alps_test.go`; 65 mutants, all killed.
+- A server's side of ALPS (2026-10-25, `u_alps_server.go`), for uTLS's tests
+  and tls-forge's bench of servers that give a client ALPS: a server with
+  `Config.ApplicationSettings` for the protocol ALPN chose sends them in its
+  EncryptedExtensions under the codepoint the client offered (the new one when
+  it offered both), reads the client's own from the client's
+  EncryptedExtensions before its Certificate and Finished, and only then
+  works out the Finished it expects and sends its tickets (it precomputed
+  them without the client's EncryptedExtensions, which failed every
+  handshake of ALPS with decrypt_error). The client looked up its own
+  settings by the ServerHello's ALPN, which TLS 1.3 leaves empty; it takes
+  `clientProtocol` now. Tests `u_alps_server_test.go` (TCP and QUIC, the
+  codepoints, resumption, a client certificate asked for).
