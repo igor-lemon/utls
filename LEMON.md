@@ -242,3 +242,11 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 - `quic.retry_over_tcp` (2026-10-25, `behavior/h3dns.go`), one of the keys
   `dns.https_h3` needs: a request its QUIC connection failed before its
   answer goes again over TCP (tls-client).
+- `Conn.Peek` and `UConn.Peek` (2026-10-25, `u_peek.go`): BoringSSL's
+  `SSL_peek`, which Chromium calls on each of its connections once its
+  handshake is done, read or not (`SSLClientSocketImpl::DoPeek`): what the
+  server sends after the handshake is read and its messages handled (every
+  session ticket of a record cached as it comes) until there is application
+  data, left for Read, or an error, the one a Read would meet; a false start
+  is finished first. tls-client peeks at a TCP connection that waits unused
+  for a request. Tests `u_peek_test.go`; 10 mutants, all killed.
