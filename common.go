@@ -1642,6 +1642,9 @@ func (c *Config) writeKeyLog(label string, clientRandom, secret []byte) error {
 	logLine := fmt.Appendf(nil, "%s %x %x\n", label, clientRandom, secret)
 
 	writerMutex.Lock()
+	// [uTLS] Let go of on every return: a return with it held, after a write
+	// that failed, held up every later key log of the process for good.
+	defer writerMutex.Unlock()
 	// A: write to the provided c.KeyLogWriter
 	if c.KeyLogWriter != nil {
 		_, err := c.KeyLogWriter.Write(logLine)
@@ -1666,7 +1669,6 @@ func (c *Config) writeKeyLog(label string, clientRandom, secret []byte) error {
 			return fmt.Errorf("[KEYLOG] Error closing SSLKEYLOG file: %w", err)
 		}
 	}
-	writerMutex.Unlock()
 
 	return nil
 }

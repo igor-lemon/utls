@@ -258,3 +258,20 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   none without; it needs `dns.https_h3`, whose race an alternative's QUIC
   connection goes through. tls-client's `altsvc.go` and `dnsh3.go` read
   them. Test `behavior/altsvc_test.go`; 15 mutants, all killed.
+- **The lock of the key logs let go of on every return**
+  (`Config.writeKeyLog` in `common.go`, 2026-10-25): bogdanfinn's
+  `SSLKEYLOGFILE` change (410eb0a, 2024) returned from a write to the
+  Config's `KeyLogWriter` that failed, and from a file `SSLKEYLOGFILE` names
+  that could not be opened, written or closed, with `writerMutex`, the one
+  lock of every key log of the process, still held: the handshake failed
+  with the error, as crypto/tls's does, and every later one that wrote its
+  secrets, of any Config, waited for it for good, its context's deadline
+  included (tls-forge's `go test -count=2 .` hung so in its key log tests).
+  A `defer` lets go of it now. Tests `u_key_log_test.go`:
+  `TestAKeyLogThatFailedHoldsUpNoLaterHandshake` (TLS 1.3 and 1.2: a writer
+  that fails, then one that works; a file that cannot be opened, then one
+  that can, which holds the lines of both ends; each handshake given ten
+  seconds, so that the old code fails in seconds) and
+  `TestKeyLogsAreWrittenOneAtATime` (a handshake whose write is held keeps
+  another's from writing until it is let go of); 7 mutants, all killed, and
+  one equivalent (the `defer` before the `Lock`).
