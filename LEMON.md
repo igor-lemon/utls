@@ -250,3 +250,11 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   data, left for Read, or an error, the one a Read would meet; a false start
   is finished first. tls-client peeks at a TCP connection that waits unused
   for a request. Tests `u_peek_test.go`; 10 mutants, all killed.
+- `behavior` registers following Alt-Svc as Chrome 155 does (2026-10-25,
+  `behavior/altsvc.go`): `quic.alt_svc` with `quic.alt_svc_user_ports`
+  (`enable_user_alternate_protocol_ports`), `quic.alt_svc_remote_hosts`
+  (`allow_remote_alt_svc`) and `quic.alt_svc_tcp_waits_with_h2`
+  (`delay_main_job_with_available_spdy_session`), all said with it and
+  none without; it needs `dns.https_h3`, whose race an alternative's QUIC
+  connection goes through. tls-client's `altsvc.go` and `dnsh3.go` read
+  them. Test `behavior/altsvc_test.go`; 15 mutants, all killed.
