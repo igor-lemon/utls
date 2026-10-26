@@ -283,3 +283,10 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   `with-finished`), `h3.peer_reset` (`frame-error`, quic-go's, or
   `read-side`); quic-go-utls reads them. Test `behavior/quic_test.go`; 16
   mutants, all killed.
+- `behavior` registers how an HTTP/3 client puts its writes in packets as
+  Chrome 155's (2026-10-26): `h3.request_writes` (`as-written`, quic-go's,
+  or `one-flush`: a request's PRIORITY_UPDATE, QPACK encoder instructions
+  and HEADERS under one flush) and `h3.qpack.decoder_writes` (`as-written`
+  or `opportunistic`: the QPACK decoder's instructions only in packets sent
+  for something else); quic-go-utls reads them. Test
+  `behavior/bundling_test.go`; 10 mutants, all killed.
