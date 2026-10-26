@@ -227,6 +227,15 @@ var supported = map[string]spec{
 	"quic.ecn":                                     {kind: "text", choices: []string{"ect0", "none"}},
 	"quic.mtu_probes":                              {kind: "text", choices: []string{"search", "none"}},
 	"quic.connection_id_change":                    {kind: "text", choices: []string{"after-handshake", "when-retired"}},
+	"quic.ack_decimation_after":                    {kind: "number", min: 1, max: 1<<62 - 1},
+	"quic.ack_decimation_packets":                  {kind: "number", min: 1, max: 65535},
+	"quic.ack_decimation_rtt_percent":              {kind: "number", min: 1, max: 1000},
+	"quic.ack_decimation_min_ms":                   {kind: "number", max: 1000},
+	"quic.ack_gap_packets":                         {kind: "number", min: 1, max: 255},
+	"quic.ack_sent_after":                          {kind: "text", choices: []string{"batch", "packet"}},
+	"quic.ack_only_max":                            {kind: "number", max: 1000},
+	"quic.ack_only_frame":                          {kind: "text", choices: []string{"ping", "max-data"}},
+	"quic.ack_alarm_slack_percent":                 {kind: "number", min: 1, max: 100},
 	"h3.control_stream":                            {kind: "text", choices: []string{"after-handshake", "with-finished"}},
 	"h3.peer_reset":                                {kind: "text", choices: []string{"frame-error", "read-side"}},
 	"h3.request_writes":                            {kind: "text", choices: []string{"as-written", "one-flush"}},
@@ -896,6 +905,9 @@ func (p Policy) Validate() error {
 		return err
 	}
 	if err := validateALPS(p); err != nil {
+		return err
+	}
+	if err := validateQUICAcks(p); err != nil {
 		return err
 	}
 	if len(p.Strings("http.digest_algorithms")) > 0 && !p.Has("http.digest_cnonce_bytes") {
