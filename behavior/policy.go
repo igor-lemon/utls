@@ -229,6 +229,8 @@ var supported = map[string]spec{
 	"quic.connection_id_change":                    {kind: "text", choices: []string{"after-handshake", "when-retired"}},
 	"h3.control_stream":                            {kind: "text", choices: []string{"after-handshake", "with-finished"}},
 	"h3.peer_reset":                                {kind: "text", choices: []string{"frame-error", "read-side"}},
+	"h3.request_writes":                            {kind: "text", choices: []string{"as-written", "one-flush"}},
+	"h3.qpack.decoder_writes":                      {kind: "text", choices: []string{"as-written", "opportunistic"}},
 	"h3.alps_reader":                               {kind: "text", choices: []string{"quiche"}},
 	"h3.alps_origin_frames":                        {kind: "text", choices: []string{"skip", "read", "abandon"}},
 	"h3.alps_close_space":                          {kind: "text", choices: []string{"transport", "application"}},
