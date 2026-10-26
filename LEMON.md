@@ -290,3 +290,16 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   or `opportunistic`: the QPACK decoder's instructions only in packets sent
   for something else); quic-go-utls reads them. Test
   `behavior/bundling_test.go`; 10 mutants, all killed.
+- `behavior` registers how a QUIC client acknowledges a long download as
+  Chrome 155's (2026-10-26; quiche's `QuicReceivedPacketManager` and
+  `QuicConnection` at Chrome 155's DEPS revision `0b2bc13f`):
+  `quic.ack_decimation_after`, `quic.ack_decimation_packets`,
+  `quic.ack_decimation_rtt_percent` and `quic.ack_decimation_min_ms` (all
+  four or none: every tenth packet from the peer's first plus 100, a quarter
+  of the least round trip, 1 ms at least), `quic.ack_gap_packets` (each of
+  the packets after a gap at once, while the highest range holds no more),
+  `quic.ack_sent_after` (`batch`, quic-go's, or `packet`), `quic.ack_only_max`
+  and `quic.ack_only_frame` (`ping`, quic-go's, or `max-data`; both or
+  neither), `quic.ack_alarm_slack_percent` (needs `quic.alarm_slack_ms`);
+  quic-go-utls reads them. Test `behavior/acks_test.go`; 27 mutants, all
+  killed.
