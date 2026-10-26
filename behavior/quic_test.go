@@ -153,3 +153,61 @@ func TestAReasonIsWrittenAsQuicheWritesIt(t *testing.T) {
 		}
 	}
 }
+
+// chromeQUICAfterHandshake is what Chrome 155's QUIC client does after its
+// handshake (quiche at its DEPS revision, measured on the bench): no ECN
+// mark, no path MTU probe, the server's first connection ID kept until the
+// server retires it, the HTTP/3 control stream in the packets that carry the
+// client's Finished, and only the read side of a request stream closed when
+// the server resets it.
+const chromeQUICAfterHandshake = `{"quic.ecn": "none", "quic.mtu_probes": "none",
+ "quic.connection_id_change": "when-retired", "h3.control_stream": "with-finished", "h3.peer_reset": "read-side"}`
+
+func TestQUICAfterTheHandshakePolicyIsTyped(t *testing.T) {
+	base := Legacy()
+	var over Policy
+	if err := json.Unmarshal([]byte(chromeQUICAfterHandshake), &over); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range over {
+		base[k] = v
+	}
+	if err := base.Validate(); err != nil {
+		t.Fatalf("Chrome's: %v", err)
+	}
+	none := map[string]string{}
+	for k := range over {
+		none[k] = ""
+	}
+	for _, tc := range []struct {
+		name    string
+		changes map[string]string // a key's new value, or "" to leave it out
+		err     string            // "" when it is valid
+	}{
+		{"none of it", none, ""},
+		{"quic-go's", map[string]string{"quic.ecn": `"ect0"`, "quic.mtu_probes": `"search"`,
+			"quic.connection_id_change": `"after-handshake"`, "h3.control_stream": `"after-handshake"`,
+			"h3.peer_reset": `"frame-error"`}, ""},
+		{"ECT(1)", map[string]string{"quic.ecn": `"ect1"`}, "unsupported primitive"},
+		{"ECN as a flag", map[string]string{"quic.ecn": "false"}, "cannot unmarshal bool"},
+		{"probes to a target", map[string]string{"quic.mtu_probes": `"high"`}, "unsupported primitive"},
+		{"probes as a flag", map[string]string{"quic.mtu_probes": "false"}, "cannot unmarshal bool"},
+		{"a connection ID changed every packet", map[string]string{"quic.connection_id_change": `"every-packet"`}, "unsupported primitive"},
+		{"a control stream before the handshake", map[string]string{"h3.control_stream": `"before-handshake"`}, "unsupported primitive"},
+		{"a reset of both sides by another code", map[string]string{"h3.peer_reset": `"request-cancelled"`}, "unsupported primitive"},
+		{"a reset said by number", map[string]string{"h3.peer_reset": "262"}, "cannot unmarshal number"},
+	} {
+		p := base.Clone()
+		for k, v := range tc.changes {
+			if v == "" {
+				delete(p, k)
+				continue
+			}
+			p[k] = json.RawMessage(v)
+		}
+		err := p.Validate()
+		if tc.err == "" && err != nil || tc.err != "" && (err == nil || !strings.Contains(err.Error(), tc.err)) {
+			t.Errorf("%s: %v, want %q", tc.name, err, tc.err)
+		}
+	}
+}
