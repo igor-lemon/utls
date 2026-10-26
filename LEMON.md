@@ -275,3 +275,11 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   `TestKeyLogsAreWrittenOneAtATime` (a handshake whose write is held keeps
   another's from writing until it is let go of); 7 mutants, all killed, and
   one equivalent (the `defer` before the `Lock`).
+- `behavior` registers a QUIC client after its handshake as Chrome 155's
+  (2026-10-26): `quic.ecn` (`ect0`, quic-go's validated ECT(0), or `none`),
+  `quic.mtu_probes` (`search`, quic-go's DPLPMTUD, or `none`),
+  `quic.connection_id_change` (`after-handshake`, quic-go's, or
+  `when-retired`), `h3.control_stream` (`after-handshake` or
+  `with-finished`), `h3.peer_reset` (`frame-error`, quic-go's, or
+  `read-side`); quic-go-utls reads them. Test `behavior/quic_test.go`; 16
+  mutants, all killed.
