@@ -66,6 +66,12 @@ func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateM
 		c.sendAlert(alertBadCertificate)
 		return nil, fmt.Errorf("unadvertised algorithm (%d)", m.algorithm)
 	}
+	// A compressed wrapper cannot bypass the existing engine limit for a
+	// Certificate message, or allocate from an untrusted uint24 length.
+	if m.uncompressedLength > maxHandshakeCertificateMsg {
+		c.sendAlert(alertBadCertificate)
+		return nil, fmt.Errorf("uncompressed certificate exceeds engine message limit (%d)", m.uncompressedLength)
+	}
 
 	switch CertCompressionAlgo(m.algorithm) {
 	case CertCompressionBrotli:
@@ -83,7 +89,7 @@ func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateM
 		decompressed = rc
 
 	case CertCompressionZstd:
-		rc, err := zstd.NewReader(compressed)
+		rc, err := zstd.NewReader(compressed, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(maxHandshakeCertificateMsg))
 		if err != nil {
 			c.sendAlert(alertBadCertificate)
 			return nil, fmt.Errorf("failed to open zstd reader: %w", err)
@@ -96,42 +102,36 @@ func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateM
 		return nil, fmt.Errorf("unsupported algorithm (%d)", m.algorithm)
 	}
 
-	rawMsg := make([]byte, m.uncompressedLength+4) // +4 for message type and uint24 length field
+	// Read one extra output byte to detect an understated length. Reading to
+	// EOF also checks the codec's completion; ReadFull could accept a valid
+	// Certificate prefix and silently discard trailing decompressed bytes.
+	body, err := io.ReadAll(io.LimitReader(decompressed, int64(m.uncompressedLength)+1))
+	if err != nil {
+		if c.config.Policy().Has("tls.certificate_decode_alert") {
+			c.sendAlert(alert(c.config.Policy().Uint("tls.certificate_decode_alert")))
+		} else {
+			c.sendAlert(alertBadCertificate)
+		}
+		return nil, err
+	}
+	if len(body) != int(m.uncompressedLength) {
+		c.sendAlert(alertBadCertificate)
+		return nil, fmt.Errorf("decompressed len (%d) does not match specified len (%d)", len(body), m.uncompressedLength)
+	}
+	// A decoder can stop at the end of its stream without reading what comes
+	// after it (zlib does). Brotli reads its own copy of the stream
+	// (brotliWindowFor) and refuses input past its end itself.
+	if CertCompressionAlgo(m.algorithm) != CertCompressionBrotli && compressed.Len() != 0 {
+		c.sendAlert(alertBadCertificate)
+		return nil, errors.New("trailing data after compressed certificate stream")
+	}
+	rawMsg := make([]byte, len(body)+4) // +4 for message type and uint24 length field
 	rawMsg[0] = typeCertificate
 	rawMsg[1] = uint8(m.uncompressedLength >> 16)
 	rawMsg[2] = uint8(m.uncompressedLength >> 8)
 	rawMsg[3] = uint8(m.uncompressedLength)
 
-	n, err := io.ReadFull(decompressed, rawMsg[4:])
-	if err != nil && !errors.Is(err, io.EOF) {
-		c.sendAlert(alertBadCertificate)
-		return nil, err
-	}
-	if n < len(rawMsg)-4 {
-		// If, after decompression, the specified length does not match the actual length, the party
-		// receiving the invalid message MUST abort the connection with the "bad_certificate" alert.
-		// https://datatracker.ietf.org/doc/html/rfc8879#section-4
-		c.sendAlert(alertBadCertificate)
-		return nil, fmt.Errorf("decompressed len (%d) does not match specified len (%d)", n, m.uncompressedLength)
-	}
-	// Read through the end of the stream to detect excess output and terminal
-	// decoder errors that may be deferred until after the last output byte.
-	var extra [1]byte
-	n, err = io.ReadFull(decompressed, extra[:])
-	if n != 0 {
-		c.sendAlert(alertBadCertificate)
-		return nil, fmt.Errorf("decompressed len exceeds specified len (%d)", m.uncompressedLength)
-	}
-	if !errors.Is(err, io.EOF) {
-		c.sendAlert(alertBadCertificate)
-		return nil, err
-	}
-	// A decoder can stop at the end of its stream without consuming the rest
-	// of the compressed certificate message.
-	if compressed.Len() != 0 {
-		c.sendAlert(alertBadCertificate)
-		return nil, errors.New("trailing data after compressed certificate stream")
-	}
+	copy(rawMsg[4:], body)
 	certMsg := new(certificateMsgTLS13)
 	if !certMsg.unmarshal(rawMsg) {
 		return nil, c.sendAlert(alertUnexpectedMessage)
