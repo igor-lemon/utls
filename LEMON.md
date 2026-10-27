@@ -340,3 +340,13 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   proves rejection waits and authenticates the server Finished; a corrupted
   Finished cannot yield ECHRejectionError. Ordinary/GREASE False Start tests
   retain their measured behavior. Shares the existing unpublished engine1.
+
+- A3/S06 compressed certificates (2026-10-27): enforce the existing engine
+  Certificate-message ceiling before decoder creation/allocation. Read at most
+  declared length+1 and require exact output length, rejecting both a short
+  stream and a valid Certificate prefix with extra output using bad_certificate.
+  Codec failures retain the profile's certificate_decode_alert (Chrome50).
+  Zstd uses one worker and the same engine ceiling for its memory/window.
+  This safety ceiling is not a browser default or a new profile value.
+  Brotli/zlib/zstd length controls, a bounded allocation subprocess and actual
+  encrypted UConn alert tests are in u_compressed_cert_security_test.go.
