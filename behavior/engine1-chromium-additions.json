@@ -1,0 +1,5 @@
+{
+  "http.max_content_codings": 10,
+  "http.content_coding_overflow": "error",
+  "http.ignored_content_codings": []
+}

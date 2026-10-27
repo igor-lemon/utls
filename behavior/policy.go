@@ -55,6 +55,9 @@ var h2RetryErrors = []string{"refused-stream", "goaway-no-error", "goaway-error"
 var givenOrders = []string{"headers.navigation_order", "headers.form_order", "headers.redirected_order", "headers.restarted_order"}
 
 var supported = map[string]spec{
+	"http.max_content_codings":                     {kind: "number", max: MaxContentCodings},
+	"http.content_coding_overflow":                 {kind: "text", choices: []string{"error", "raw"}},
+	"http.ignored_content_codings":                 {kind: "texts"},
 	"http.zero_content_length_methods":             {kind: "methods"},
 	"http.content_length_empty_body":               {kind: "boolean"},
 	"h1.zero_length_identity":                      {kind: "boolean"},
@@ -397,11 +400,19 @@ var supported = map[string]spec{
 
 //go:embed legacy-chromium.json
 var legacyJSON []byte
+
+//go:embed engine1-chromium-additions.json
+var chromiumAdditions []byte
+
+//go:embed engine1-generic-additions.json
+var genericAdditions []byte
+
 var legacy = func() Policy {
 	var p Policy
 	if err := json.Unmarshal(legacyJSON, &p); err != nil {
 		panic(err)
 	}
+	p = migrationAdditions(p, chromiumAdditions)
 	if err := p.Validate(); err != nil {
 		panic(err)
 	}
@@ -552,6 +563,9 @@ func (p Policy) Validate() error {
 		if err != nil {
 			return fmt.Errorf("behavior %s: %w", k, err)
 		}
+	}
+	if err := validateContentCodings(p); err != nil {
+		return err
 	}
 	if p.Has("h3.qpack.stream_order") {
 		v := p.Numbers("h3.qpack.stream_order")
@@ -935,7 +949,7 @@ var generic = func() Policy {
 	if err := json.Unmarshal(genericJSON, &p); err != nil {
 		panic(err)
 	}
-	return p
+	return migrationAdditions(p, genericAdditions)
 }()
 
 func Generic() Policy { return generic.Clone() }
