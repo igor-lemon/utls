@@ -1387,7 +1387,9 @@ func (c *Conn) handleKeyUpdate(keyUpdate *keyUpdateMsg) error {
 	}
 
 	newSecret := cipherSuite.nextTrafficSecret(c.in.trafficSecret)
-	c.in.setTrafficSecret(cipherSuite, QUICEncryptionLevelInitial, newSecret)
+	if err := c.setReadTrafficSecret(cipherSuite, QUICEncryptionLevelInitial, newSecret); err != nil {
+		return c.in.setErrorLocked(err)
+	}
 
 	if keyUpdate.updateRequested {
 		c.out.Lock()
@@ -1413,6 +1415,18 @@ func (c *Conn) handleKeyUpdate(keyUpdate *keyUpdateMsg) error {
 		c.out.setTrafficSecret(cipherSuite, QUICEncryptionLevelInitial, newSecret)
 	}
 
+	return nil
+}
+
+// setReadTrafficSecret rejects messages buffered under the previous keys.
+// If the write keys also change, callers set them first so alerts use the
+// current write level. Callers must not hold c.out.
+func (c *Conn) setReadTrafficSecret(suite *cipherSuiteTLS13, level QUICEncryptionLevel, secret []byte) error {
+	if c.hand.Len() != 0 {
+		c.sendAlert(alertUnexpectedMessage)
+		return errors.New("tls: handshake buffer not empty before setting read traffic secret")
+	}
+	c.in.setTrafficSecret(suite, level, secret)
 	return nil
 }
 

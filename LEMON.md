@@ -350,3 +350,13 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   This safety ceiling is not a browser default or a new profile value.
   Brotli/zlib/zstd length controls, a bounded allocation subprocess and actual
   encrypted UConn alert tests are in u_compressed_cert_security_test.go.
+
+- A3/S06 CVE-2025-61730 / GO-2026-4340: Go1.26.10's read-key guard rejects
+  buffered handshake bytes at every read secret change, including KeyUpdate;
+  a server also rejects extra ClientHello bytes before HRR. Set write keys
+  first when both levels change, so errors use the right alert protection.
+  Old QUIC-only checks no longer stand in for the generic guard. Upstream
+  trailing-message/duplicate-HRR regressions plus a profile-shaped UConn
+  case live in u_read_keys_security_test.go. Valid flight/KeyUpdate/HRR and
+  real-ECH replay tests retain their original bytes. No selectable browser
+  behavior or JSON value changed; this is protocol integrity in engine1.
