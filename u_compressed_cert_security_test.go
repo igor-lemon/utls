@@ -380,3 +380,46 @@ func TestABrotliCertificateAllocatesNoMoreThanItsLengthNeeds(t *testing.T) {
 		}
 	}
 }
+
+// A brotli stream cut short is refused, however much of the message it gave.
+// One flushed before it was closed holds the message in a meta-block that is
+// not the last, and ends with an empty last one: cut before that end it gives
+// the whole message, which only the decoder can tell from a whole stream.
+func TestATruncatedBrotliCertificateIsRefused(t *testing.T) {
+	msg := &certificateMsgTLS13{certificate: Certificate{Certificate: [][]byte{testP256Certificate}}}
+	raw, err := msg.marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := raw[4:]
+	var flushed bytes.Buffer
+	w := brotli.NewWriter(&flushed)
+	_, _ = w.Write(body)
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	whole := flushed.Len()
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	compressed := flushed.Bytes()
+	if got, err := io.ReadAll(brotli.NewReader(bytes.NewReader(compressed[:whole]))); !bytes.Equal(got, body) {
+		t.Fatalf("the stream before its end gave %d bytes of %d (%v)", len(got), len(body), err)
+	}
+	for cut := range len(compressed) {
+		c, s := net.Pipe()
+		_ = c.SetDeadline(time.Now().Add(time.Second))
+		done := make(chan struct{})
+		go func() { b := make([]byte, 7); _, _ = s.Read(b); close(done) }()
+		conn := Client(c, &Config{})
+		conn.vers = VersionTLS13
+		hs := &clientHandshakeStateTLS13{c: conn, uconn: &UConn{certCompressionAlgs: []CertCompressionAlgo{CertCompressionBrotli}}}
+		_, err := hs.decompressCert(utlsCompressedCertificateMsg{algorithm: uint16(CertCompressionBrotli), uncompressedLength: uint32(len(body)), compressedCertificateMessage: compressed[:cut]})
+		_ = c.Close()
+		<-done
+		_ = s.Close()
+		if err == nil {
+			t.Fatalf("a stream cut to %d of its %d bytes was taken", cut, len(compressed))
+		}
+	}
+}
