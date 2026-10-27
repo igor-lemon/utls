@@ -393,6 +393,7 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 	specECH := hs.uconn != nil && hs.uconn.echSpec != nil
 	if hs.uconn != nil && !specECH {
 		if hs.uconn.ClientHelloID.Str() != HelloGolang.Str() {
+			var psk *UtlsPreSharedKeyExtension
 			keyShareExtFound := false
 			for _, ext := range hs.uconn.Extensions {
 				// new ks seems to be generated either way
@@ -400,6 +401,15 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 					ks.KeyShares = keyShares(hs.hello.keyShares).ToPublic()
 					keyShareExtFound = true
 				}
+				if p, ok := ext.(*UtlsPreSharedKeyExtension); ok {
+					psk = p
+					p.Identities = pskIdentities(hello.pskIdentities).ToPublic()
+					p.Binders = hello.pskBinders
+					p.cachedLength = nil
+				}
+			}
+			if len(hello.pskIdentities) > 0 && psk == nil {
+				return errors.New("uTLS: HelloRetryRequest requires a recomputable pre_shared_key extension")
 			}
 			if !keyShareExtFound {
 				return errors.New("uTLS: received HelloRetryRequest, but keyshare not found among client's " +
@@ -411,22 +421,23 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 				return err
 			}
 
-			if len(hs.hello.pskIdentities) > 0 {
-				for _, ext := range hs.uconn.Extensions {
-					if psk, ok := ext.(PreSharedKeyExtension); ok {
-						if err := psk.UpdateOnHRR(chHash, hs, c.config.time()); err != nil {
-							// Graceful degradation: clear PSK and continue without resumption.
-							hs.uconn.HandshakeState.Hello.PskIdentities = nil
-							hs.uconn.HandshakeState.Hello.PskBinders = nil
-						} else {
-							psk.PatchBuiltHello(hs.uconn.HandshakeState.Hello)
-						}
-						break
-					}
-				}
-			}
-
 			hs.hello.original = hs.uconn.HandshakeState.Hello.Raw
+			if psk != nil && len(hello.pskIdentities) > 0 {
+				// The earlier crypto/tls update saw the old serialized hello.
+				// Bind the actual profile-shaped ClientHello2, after key_share,
+				// cookie and age changes, to message_hash(CH1) || HRR.
+				transcript := cloneHash(hs.transcript, hs.suite.hash)
+				if err := computeAndUpdatePSK(hello, hs.binderKey, transcript, hs.suite.finishedHash); err != nil {
+					return err
+				}
+				psk.Binders = hello.pskBinders
+				if err := hs.uconn.MarshalClientHelloNoECH(); err != nil {
+					return err
+				}
+				hs.hello.original = hs.uconn.HandshakeState.Hello.Raw
+			}
+			hs.uconn.HandshakeState.Hello.PskIdentities = pskIdentities(hello.pskIdentities).ToPublic()
+			hs.uconn.HandshakeState.Hello.PskBinders = hello.pskBinders
 		}
 	}
 	// [uTLS SECTION ENDS]

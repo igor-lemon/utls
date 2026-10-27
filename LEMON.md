@@ -322,3 +322,14 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   Engine1 additions carry Chrome156/macOS observations; frozen legacy source
   JSON remains unchanged. A hard ceiling of 64 rules and 256 prefix bytes
   bounds the generic capability. Other browsers/builds are not newly measured.
+
+- Unreleased engine1 PSK+HRR (S03, 2026-10-27): real PSK extensions receive
+  the retried identities/ages and binders; the binder is recomputed after
+  marshalling actual profile-shaped ClientHello2 over message_hash(CH1)||HRR.
+  Reset the extension's cached length when a hash-incompatible PSK is removed.
+  Unsupported opaque/fake PSK retry implementations fail explicitly. The
+  separate real-ECH helloRetrySpecECH path is unchanged. Test
+  u_psk_hrr_test.go uses a standard-library TLS1.3 server, P-256/P-384-only
+  and X25519, six fresh connections with server-confirmed resumption. The
+  owning product retains actual Chrome156/macOS cohorts, raw packets/secrets
+  privately and an independent HMAC/HKDF binder oracle with negative controls.
