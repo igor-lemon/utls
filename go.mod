@@ -8,15 +8,11 @@ retract (
 )
 
 require (
-	github.com/klauspost/compress v1.20.1
-	github.com/molecule-man/go-brrr v1.2.0
+	github.com/andybalholm/brotli v1.2.7
+	github.com/klauspost/compress v1.20.2
 	golang.org/x/crypto v0.57.0
 	golang.org/x/net v0.59.0
 	golang.org/x/sys v0.48.0
 )
 
-require (
-	github.com/andybalholm/brotli v1.2.7
-	golang.org/x/text v0.42.0 // indirect
-	golang.org/x/tools v0.51.0 // indirect
-)
+require golang.org/x/text v0.42.0 // indirect

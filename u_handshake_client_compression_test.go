@@ -14,7 +14,9 @@ import (
 )
 
 func TestDecompressCertZlibAndZstd(t *testing.T) {
-	incompressibleCertificate := make([]byte, 256<<10)
+	// [uTLS] no larger than the engine's Certificate message limit
+	// (maxHandshakeCertificateMsg), which a compressed one may not pass.
+	incompressibleCertificate := make([]byte, 256<<10-16)
 	rand.New(rand.NewSource(0)).Read(incompressibleCertificate)
 	for _, codec := range certificateTestCodecs {
 		t.Run(codec.name, func(t *testing.T) {
@@ -23,7 +25,7 @@ func TestDecompressCertZlibAndZstd(t *testing.T) {
 				certificate []byte
 			}{
 				{"small", []byte("test certificate")},
-				{"large_compressible", bytes.Repeat([]byte("certificate"), 32<<10)},
+				{"large_compressible", bytes.Repeat([]byte("certificate"), 23<<10)},
 				{"large_incompressible", incompressibleCertificate},
 			} {
 				t.Run(test.name, func(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/molecule-man/go-brrr"
+	"github.com/andybalholm/brotli"
 )
 
 func TestDecompressCertBrotli(t *testing.T) {
@@ -145,10 +145,9 @@ func marshalBrotliTestCertificate(t *testing.T, certificate []byte) []byte {
 func compressBrotliTestCertificate(t *testing.T, body []byte, window int) []byte {
 	t.Helper()
 	var compressed bytes.Buffer
-	w, err := brrr.NewWriterOptions(&compressed, 5, brrr.WriterOptions{LGWin: window})
-	if err != nil {
-		t.Fatal(err)
-	}
+	// [uTLS] the fork decodes with andybalholm/brotli (brotliWindowFor), so
+	// the stream is made with it too.
+	w := brotli.NewWriterOptions(&compressed, brotli.WriterOptions{Quality: 5, LGWin: window})
 	if _, err := w.Write(body); err != nil {
 		t.Fatal(err)
 	}
