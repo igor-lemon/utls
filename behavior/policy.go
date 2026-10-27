@@ -55,6 +55,7 @@ var h2RetryErrors = []string{"refused-stream", "goaway-no-error", "goaway-error"
 var givenOrders = []string{"headers.navigation_order", "headers.form_order", "headers.redirected_order", "headers.restarted_order"}
 
 var supported = map[string]spec{
+	"cookie.prefixes":                              {kind: "cookie-prefixes"},
 	"http.max_content_codings":                     {kind: "number", max: MaxContentCodings},
 	"http.content_coding_overflow":                 {kind: "text", choices: []string{"error", "raw"}},
 	"http.ignored_content_codings":                 {kind: "texts"},
@@ -469,6 +470,8 @@ func (p Policy) Validate() error {
 		}
 		var err error
 		switch s.kind {
+		case "cookie-prefixes":
+			_, err = parseCookiePrefixes(raw)
 		case "boolean":
 			var v bool
 			err = json.Unmarshal(raw, &v)
