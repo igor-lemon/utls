@@ -333,3 +333,10 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   and X25519, six fresh connections with server-confirmed resumption. The
   owning product retains actual Chrome156/macOS cohorts, raw packets/secrets
   privately and an independent HMAC/HKDF binder oracle with negative controls.
+
+- A3/S06 real-ECH False Start (2026-10-27): RFC9849 forbids TLS1.2 False
+  Start after an actual ECH offer. Check the negotiated profile ECH context,
+  not the presence of a GREASE ECH extension. The held-Finished regression
+  proves rejection waits and authenticates the server Finished; a corrupted
+  Finished cannot yield ECHRejectionError. Ordinary/GREASE False Start tests
+  retain their measured behavior. Shares the existing unpublished engine1.

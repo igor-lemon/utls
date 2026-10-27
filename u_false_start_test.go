@@ -378,6 +378,8 @@ func TestFalseStartsOnlyWhereItsRuleSays(t *testing.T) {
 		}, false},
 		{"CBC", func(hs *clientHandshakeState) { hs.suite = cipherSuiteByID(TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA) }, false},
 		{"no ALPN", func(hs *clientHandshakeState) { hs.c.clientProtocol = "" }, false},
+		{"a real ECH offer", func(hs *clientHandshakeState) { hs.uconn = &UConn{echSpec: &specECH{}} }, false},
+		{"a parrot without a real ECH offer", func(hs *clientHandshakeState) { hs.uconn = &UConn{} }, true},
 	} {
 		hs := base()
 		tc.change(hs)

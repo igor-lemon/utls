@@ -21,6 +21,7 @@ import "errors"
 func (hs *clientHandshakeState) falseStarts() bool {
 	c := hs.c
 	return c.config.FalseStart && c.handshakes == 0 && c.vers == VersionTLS12 &&
+		(hs.uconn == nil || hs.uconn.echSpec == nil) &&
 		hs.suite.flags&suiteECDHE != 0 && hs.suite.aead != nil && c.clientProtocol != ""
 }
 
