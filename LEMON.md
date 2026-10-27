@@ -314,3 +314,11 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   neither), `quic.ack_alarm_slack_percent` (needs `quic.alarm_slack_ms`);
   quic-go-utls reads them. Test `behavior/acks_test.go`; 27 mutants, all
   killed.
+
+- Unreleased engine1 cookie-prefix policy (2026-10-27): `cookie.prefixes`
+  contains explicit ASCII prefixes, case matching, nameless-value rejection
+  and required secure/http-only/host-only/root-path attributes. Strict nested
+  validation rejects unknown, repeated, missing and invalid fields before I/O.
+  Engine1 additions carry Chrome156/macOS observations; frozen legacy source
+  JSON remains unchanged. A hard ceiling of 64 rules and 256 prefix bytes
+  bounds the generic capability. Other browsers/builds are not newly measured.

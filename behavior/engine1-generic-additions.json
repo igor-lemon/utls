@@ -1,5 +1,47 @@
 {
   "http.max_content_codings": 64,
   "http.content_coding_overflow": "error",
-  "http.ignored_content_codings": ["identity"]
+  "http.ignored_content_codings": [
+    "identity"
+  ],
+  "cookie.prefixes": [
+    {
+      "prefix": "__Secure-",
+      "case_sensitive": false,
+      "reject_nameless": true,
+      "attributes": [
+        "secure"
+      ]
+    },
+    {
+      "prefix": "__Host-",
+      "case_sensitive": false,
+      "reject_nameless": true,
+      "attributes": [
+        "secure",
+        "host-only",
+        "root-path"
+      ]
+    },
+    {
+      "prefix": "__Http-",
+      "case_sensitive": false,
+      "reject_nameless": true,
+      "attributes": [
+        "secure",
+        "http-only"
+      ]
+    },
+    {
+      "prefix": "__Host-Http-",
+      "case_sensitive": false,
+      "reject_nameless": true,
+      "attributes": [
+        "secure",
+        "http-only",
+        "host-only",
+        "root-path"
+      ]
+    }
+  ]
 }
