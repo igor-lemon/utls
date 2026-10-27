@@ -370,3 +370,7 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   profile UConn root-replacement control are retained. One positive ECH test
   now supplies its test CA to its second Config too; none of its outer/inner
   identity assertions was weakened. Full hello/record replay suite passes.
+
+- A6: invalid H3 GREASE length diagnostics identify the behavior field, index,
+  actual value/count and existing resource bound. The supported ranges and
+  browser values are unchanged; no new policy primitive or default.

@@ -626,11 +626,11 @@ func (p Policy) Validate() error {
 	if p.Has("h3.grease_payload_lengths") {
 		lengths := p.Numbers("h3.grease_payload_lengths")
 		if len(lengths) == 0 || len(lengths) > 256 {
-			return fmt.Errorf("invalid GREASE payload length vector")
+			return fmt.Errorf("behavior h3.grease_payload_lengths: invalid GREASE payload length vector (%d values; requires 1..256)", len(lengths))
 		}
-		for _, n := range lengths {
+		for i, n := range lengths {
 			if n > 4096 {
-				return fmt.Errorf("GREASE payload exceeds engine resource bound")
+				return fmt.Errorf("behavior h3.grease_payload_lengths[%d] = %d: GREASE payload exceeds engine resource bound; requires 0..4096", i, n)
 			}
 		}
 	}
