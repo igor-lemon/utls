@@ -1064,7 +1064,7 @@ func TestTheOuterHelloOffersNoSessionTheInnerResumes(t *testing.T) {
 	s.handshake(t, listOf(s.config), cfg, cache)
 	c, _ := net.Pipe()
 	defer c.Close()
-	uc := UClient(c, &Config{ServerName: "secret.example", EncryptedClientHelloConfigList: listOf(s.config),
+	uc := UClient(c, &Config{ServerName: "secret.example", RootCAs: s.roots, EncryptedClientHelloConfigList: listOf(s.config),
 		Behavior: policyOf(t, chromeECHPolicy), ClientSessionCache: cache, OmitEmptyPsk: true}, HelloCustom, false, false, false)
 	if err := uc.ApplyPreset(chromeHelloSpec(t)); err != nil {
 		t.Fatal(err)

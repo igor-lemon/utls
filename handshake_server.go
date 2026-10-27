@@ -522,7 +522,10 @@ func (hs *serverHandshakeState) checkForResumption() error {
 		return nil
 	}
 	if sessionHasClientCerts && c.config.ClientAuth >= VerifyClientCertIfGiven &&
-		len(sessionState.verifiedChains) == 0 {
+		!anyValidVerifiedChain(sessionState.verifiedChains, x509.VerifyOptions{
+			CurrentTime: c.config.time(), Roots: c.config.ClientCAs,
+			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		}) {
 		return nil
 	}
 

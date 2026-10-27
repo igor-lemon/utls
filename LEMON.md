@@ -360,3 +360,13 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   case live in u_read_keys_security_test.go. Valid flight/KeyUpdate/HRR and
   real-ECH replay tests retain their original bytes. No selectable browser
   behavior or JSON value changed; this is protocol integrity in engine1.
+
+- A3/S06 CVE-2025-68121 / GO-2026-4337: revalidate cached chains against
+  current time and roots before client or mTLS server resumption, in both
+  TLS1.2 and TLS1.3, as Go1.26.10 does. Evict invalid client cache entries
+  and perform a fresh handshake. Explicit existing insecure time/name options
+  retain their original semantics; this is certificate integrity, not a JSON
+  default. Ported expiry/RootCAs/GetConfigForClient+ClientCAs tests and a real
+  profile UConn root-replacement control are retained. One positive ECH test
+  now supplies its test CA to its second Config too; none of its outer/inner
+  identity assertions was weakened. Full hello/record replay suite passes.

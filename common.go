@@ -22,6 +22,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -1914,4 +1915,44 @@ func (c *lruSessionCache) Take(key string) (*ClientSessionState, bool) {
 		c.q.MoveToFront(e)
 	}
 	return v, v != nil
+}
+
+// anyValidVerifiedChain reports if at least one of the chains in verifiedChains
+// is valid, as indicated by none of the certificates being expired and the root
+// being in opts.Roots (or in the system root pool if opts.Roots is nil). If
+// verifiedChains is empty, it returns false.
+func anyValidVerifiedChain(verifiedChains [][]*x509.Certificate, opts x509.VerifyOptions) bool {
+	for _, chain := range verifiedChains {
+		if len(chain) == 0 {
+			continue
+		}
+		if slices.ContainsFunc(chain, func(cert *x509.Certificate) bool {
+			return opts.CurrentTime.Before(cert.NotBefore) || opts.CurrentTime.After(cert.NotAfter)
+		}) {
+			continue
+		}
+		// Since we already validated the chain, we only care that it is rooted
+		// in a CA in opts.Roots. On platforms where we control chain validation
+		// (e.g. not Windows or macOS) this is a simple lookup in the CertPool
+		// internal hash map, which we can simulate by running Verify on the
+		// root. On other platforms, we have to do full verification again,
+		// because EKU handling might differ. We will want to replace this with
+		// CertPool.Contains if/once that is available. See go.dev/issue/77376.
+		if runtime.GOOS == "windows" || runtime.GOOS == "darwin" || runtime.GOOS == "ios" {
+			opts.Intermediates = x509.NewCertPool()
+			for _, cert := range chain[1:max(1, len(chain)-1)] {
+				opts.Intermediates.AddCert(cert)
+			}
+			leaf := chain[0]
+			if _, err := leaf.Verify(opts); err == nil {
+				return true
+			}
+		} else {
+			root := chain[len(chain)-1]
+			if _, err := root.Verify(opts); err == nil {
+				return true
+			}
+		}
+	}
+	return false
 }
