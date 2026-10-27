@@ -1,0 +1,5 @@
+{
+  "http.max_content_codings": 64,
+  "http.content_coding_overflow": "error",
+  "http.ignored_content_codings": ["identity"]
+}

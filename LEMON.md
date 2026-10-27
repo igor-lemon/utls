@@ -37,6 +37,17 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 
 ## Patches
 
+- **Bounded content-coding policy for the unpublished engine 1**:
+  `http.max_content_codings`, `http.content_coding_overflow` and
+  `http.ignored_content_codings` are typed JSON choices. The decoder-chain
+  safety ceiling is 64; it is not a browser default. Chromium's lower limit
+  and identity handling are explicit migration additions measured on Chrome
+  156, while generic compatibility data retains its explicit normalization.
+  `legacy-chromium.json` and `legacy-generic.json` stay unchanged; new choices
+  are in separately identified `engine1-*-additions.json`. Partial/null,
+  out-of-range and unsupported policies are rejected. Tests in
+  `behavior/content_codings_test.go`.
+
 - **A parrot's second flight in as few records as it fits in**
   (`handshake_client_tls13.go`, `Conn.writeHandshakeRecord`,
   `Conn.writeFlight` in `u_conn.go`): a TLS 1.3 client handshake driven by a
