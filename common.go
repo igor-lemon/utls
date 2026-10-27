@@ -21,7 +21,6 @@ import (
 	"github.com/igor-lemon/utls/behavior"
 	"io"
 	"net"
-	"os"
 	"runtime"
 	"slices"
 	"strings"
@@ -1632,46 +1631,17 @@ const (
 	keyLogLabelServerTraffic   = "SERVER_TRAFFIC_SECRET_0"
 )
 
+// writeKeyLog exports secrets only to an explicitly selected writer.
+// Ambient SSLKEYLOGFILE is deliberately ignored, including on servers.
 func (c *Config) writeKeyLog(label string, clientRandom, secret []byte) error {
-	sslKeyLogFilePath := os.Getenv("SSLKEYLOGFILE")
-	if c.KeyLogWriter == nil && sslKeyLogFilePath == "" { // aborting early to save CPU
+	if c.KeyLogWriter == nil {
 		return nil
 	}
-
-	// if we're here, that means that we want to write a log line either to the
-	// c.KeyLogWriter or to the file pointed at by $SSLKEYLOGFILE
 	logLine := fmt.Appendf(nil, "%s %x %x\n", label, clientRandom, secret)
-
 	writerMutex.Lock()
-	// [uTLS] Let go of on every return: a return with it held, after a write
-	// that failed, held up every later key log of the process for good.
 	defer writerMutex.Unlock()
-	// A: write to the provided c.KeyLogWriter
-	if c.KeyLogWriter != nil {
-		_, err := c.KeyLogWriter.Write(logLine)
-		if err != nil {
-			return err
-		}
-	}
-	// B: write to the env SSLKEYLOGFILE
-	if sslKeyLogFilePath != "" {
-		sslKeyLogFile, err := os.OpenFile(sslKeyLogFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
-		if err != nil {
-			return fmt.Errorf("[KEYLOG] Error opening SSLKEYLOG file: %w", err)
-		}
-		_, err = sslKeyLogFile.Write(logLine)
-		if err != nil {
-			return fmt.Errorf("[KEYLOG] Error writing SSLKEYLOG file: %w", err)
-		}
-		// closing the file to make sure that everything get's flushed to disk
-		// yes, this will
-		err = sslKeyLogFile.Close()
-		if err != nil {
-			return fmt.Errorf("[KEYLOG] Error closing SSLKEYLOG file: %w", err)
-		}
-	}
-
-	return nil
+	_, err := c.KeyLogWriter.Write(logLine)
+	return err
 }
 
 // writerMutex protects all KeyLogWriters globally. It is rarely enabled,
