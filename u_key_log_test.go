@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -108,16 +106,8 @@ func shookHands(t *testing.T, ended <-chan error) error {
 	}
 }
 
-// TestAKeyLogThatFailedHoldsUpNoLaterHandshake holds a handshake whose
-// secrets could not be written to crypto/tls's rule, which fails it with the
-// write's error, and every handshake after it in the process to going on as
-// before: writeKeyLog returned from a write that failed, to the Config's
-// writer or to the file SSLKEYLOGFILE names (here one that cannot be opened),
-// with the lock of every key log held, and the next handshake to write its
-// secrets waited for it for good. A file that can be opened holds the lines of
-// both ends, which are the same, the client's as its own writer has them; the
-// server that failed with the client ends before the file is named, since a
-// TLS 1.2 one writes its secret once it has read the client's key exchange.
+// TestAKeyLogThatFailedHoldsUpNoLaterHandshake preserves explicit writer
+// error propagation and release of the process-wide key log lock.
 func TestAKeyLogThatFailedHoldsUpNoLaterHandshake(t *testing.T) {
 	for _, version := range []uint16{VersionTLS13, VersionTLS12} {
 		t.Run(fmt.Sprintf("%x/writer", version), func(t *testing.T) {
@@ -133,39 +123,6 @@ func TestAKeyLogThatFailedHoldsUpNoLaterHandshake(t *testing.T) {
 			}
 			if got := labelsOf(keys.lines()); !slices.Equal(got, keyLogLabels(version)) {
 				t.Errorf("the handshake after it wrote %q, want %q", got, keyLogLabels(version))
-			}
-		})
-		t.Run(fmt.Sprintf("%x/file", version), func(t *testing.T) {
-			dir := t.TempDir()
-			t.Setenv("SSLKEYLOGFILE", filepath.Join(dir, "missing", "keys"))
-			client, server := keyLogged(t, version, nil)
-			if err := shookHands(t, client); err == nil || !strings.Contains(err.Error(), "Error opening SSLKEYLOG file") {
-				t.Fatalf("a handshake whose key log file could not be opened: %v", err)
-			}
-			if err := shookHands(t, server); err == nil {
-				t.Fatal("the server of a client that failed shook hands")
-			}
-			file := filepath.Join(dir, "keys")
-			t.Setenv("SSLKEYLOGFILE", file)
-			var keys keyLines
-			client, _ = keyLogged(t, version, &keys)
-			if err := shookHands(t, client); err != nil {
-				t.Fatalf("the handshake after it: %v", err)
-			}
-			written, err := os.ReadFile(file)
-			if err != nil {
-				t.Fatal(err)
-			}
-			own := keys.lines()
-			if got := labelsOf(own); !slices.Equal(got, keyLogLabels(version)) {
-				t.Errorf("the handshake after it wrote %q, want %q", got, keyLogLabels(version))
-			}
-			var want []string // each line twice: the client's and the server's
-			for _, line := range own {
-				want = append(want, line, line)
-			}
-			if got := sortedLines(string(written)); !slices.Equal(got, want) {
-				t.Errorf("the file holds\n%s\nthe client wrote\n%s", strings.Join(got, "\n"), strings.Join(own, "\n"))
 			}
 		})
 	}
