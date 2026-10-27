@@ -75,7 +75,7 @@ func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateM
 
 	switch CertCompressionAlgo(m.algorithm) {
 	case CertCompressionBrotli:
-		decompressed = brotli.NewReader(compressed)
+		decompressed = brotli.NewReader(brotliWindowFor(m.compressedCertificateMessage, m.uncompressedLength))
 
 	case CertCompressionZlib:
 		rc, err := zlib.NewReader(compressed)
@@ -128,6 +128,33 @@ func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateM
 		return nil, c.sendAlert(alertUnexpectedMessage)
 	}
 	return certMsg, nil
+}
+
+// brotliWindowFor is a brotli stream whose window is made no larger than a
+// Certificate message of n bytes needs. The decoder sizes its ring buffer from
+// the stream's window and from what a meta-block says it holds, before any of
+// that data has come: four bytes saying a window of 24 bits and a meta-block of
+// 2^24 bytes allocate 16 MiB. A window of 2^w bytes reaches back 2^w - 16
+// bytes, and a distance beyond that, or beyond what is decoded so far, names a
+// dictionary word, so while 2^w - 16 >= n every distance of a stream that
+// decodes to n bytes means what it means in its own larger window. WBITS 18 to
+// 24 take the same four bits of the first byte, and only the three that pick
+// among them change, so nothing after them moves; a window of 2^17 bytes or
+// less is left as it is. A stream that says more than n bytes fails as before.
+func brotliWindowFor(stream []byte, n uint32) io.Reader {
+	if len(stream) == 0 || stream[0]&1 == 0 || stream[0]>>1&7 == 0 {
+		return bytes.NewReader(stream)
+	}
+	wbits := uint32(17 + stream[0]>>1&7)
+	need := uint32(18)
+	for need < wbits && (1<<need)-16 < n {
+		need++
+	}
+	if need == wbits {
+		return bytes.NewReader(stream)
+	}
+	first := stream[0]&^0x0e | byte(need-17)<<1
+	return io.MultiReader(bytes.NewReader([]byte{first}), bytes.NewReader(stream[1:]))
 }
 
 // to be called in (*clientHandshakeStateTLS13).handshake(),

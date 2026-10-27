@@ -374,3 +374,15 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 - A6: invalid H3 GREASE length diagnostics identify the behavior field, index,
   actual value/count and existing resource bound. The supported ranges and
   browser values are unchanged; no new policy primitive or default.
+
+- Review problem 6 (2026-10-28): the brotli decoder sized its ring buffer from
+  the stream's window and a meta-block's claimed length before any data came,
+  so four bytes (WBITS 24, a non-last 2^24-byte meta-block) allocated 16 MiB.
+  `brotliWindowFor` cuts WBITS 18..24 to the least window whose reach,
+  2^w - 16, covers the declared length (2^18, or 2^19 past 262128 bytes):
+  only the three bits choosing among them change, and every distance of a
+  stream decoding to that many bytes keeps its meaning (a back reference
+  within the window, a dictionary word beyond). 326 KB and 590 KB measured
+  for the four bytes. Tests: the bit rewrite table, decoding against the
+  stream's own window (a copy from 262130 bytes back, which a 2^18 window
+  would read as a dictionary word), a bounded allocation subprocess.
