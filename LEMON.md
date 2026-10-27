@@ -386,3 +386,12 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   for the four bytes. Tests: the bit rewrite table, decoding against the
   stream's own window (a copy from 262130 bytes back, which a 2^18 window
   would read as a dictionary word), a bounded allocation subprocess.
+
+- andybalholm/brotli v1.0.6's Reader took a stream that ended short of its
+  last meta-block for a whole one when its input ran out between meta-blocks:
+  a stream flushed before it was closed, cut before the empty last
+  meta-block, gave the whole Certificate with no error, which Chrome's
+  decoder refuses (it needs more input). v1.2.3, which tls-forge already
+  links, says io.ErrUnexpectedEOF there; utls now requires it, so a module
+  built on utls alone refuses such a stream too
+  (TestATruncatedBrotliCertificateIsRefused cuts every prefix).
