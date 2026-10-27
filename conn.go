@@ -1393,6 +1393,11 @@ func (c *Conn) handleKeyUpdate(keyUpdate *keyUpdateMsg) error {
 		return c.in.setErrorLocked(c.sendAlert(alertInternalError))
 	}
 
+	newSecret := cipherSuite.nextTrafficSecret(c.in.trafficSecret)
+	if err := c.setReadTrafficSecret(cipherSuite, QUICEncryptionLevelInitial, newSecret, false); err != nil {
+		return c.in.setErrorLocked(err)
+	}
+
 	if keyUpdate.updateRequested {
 		c.out.Lock()
 		defer c.out.Unlock()
@@ -1415,11 +1420,6 @@ func (c *Conn) handleKeyUpdate(keyUpdate *keyUpdateMsg) error {
 
 		newSecret := cipherSuite.nextTrafficSecret(c.out.trafficSecret)
 		c.setWriteTrafficSecret(cipherSuite, QUICEncryptionLevelInitial, newSecret)
-	}
-
-	newSecret := cipherSuite.nextTrafficSecret(c.in.trafficSecret)
-	if err := c.setReadTrafficSecret(cipherSuite, QUICEncryptionLevelInitial, newSecret, keyUpdate.updateRequested); err != nil {
-		return err
 	}
 
 	return nil
@@ -1746,6 +1746,8 @@ func (c *Conn) VerifyHostname(host string) error {
 // setReadTrafficSecret sets the read traffic secret for the given encryption level. If
 // being called at the same time as setWriteTrafficSecret, the caller must ensure the call
 // to setWriteTrafficSecret happens first so any alerts are sent at the write level.
+// It rejects messages buffered under the previous keys; locked says the caller
+// holds c.out.
 func (c *Conn) setReadTrafficSecret(suite *cipherSuiteTLS13, level QUICEncryptionLevel, secret []byte, locked bool) error {
 	// Ensure that there are no buffered handshake messages before changing the
 	// read keys, since that can cause messages to be parsed that were encrypted
