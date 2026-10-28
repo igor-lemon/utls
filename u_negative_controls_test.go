@@ -308,3 +308,31 @@ func TestACookieGoesAmongTheExtensionsBoringSSLPermutes(t *testing.T) {
 		}
 	}
 }
+
+// A pre_shared_key of the caller's own bytes (FakePreSharedKeyExtension) has
+// no session to say its suite or to bind a second hello with: a
+// HelloRetryRequest ends the handshake with an error, as for any PSK that
+// cannot be made again, and not with a nil session dereferenced.
+func TestAHelloRetryRequestAfterAFakePSKIsAnError(t *testing.T) {
+	s := newECHTestServer(t)
+	cfg := s.serverConfig(false, stdtls.CurveP256)
+	cfg.MinVersion = stdtls.VersionTLS13
+	cache := NewLRUClientSessionCache(8)
+	if run := s.handshakeWith(t, cfg, cache, nil, nil, nil); run.clientErr != nil || run.serverErr != nil {
+		t.Fatalf("first connection: client %v, server %v", run.clientErr, run.serverErr)
+	}
+	run := s.handshakeWith(t, cfg, cache, nil, nil, func(uc *UConn) {
+		if err := uc.SetPskExtension(&FakePreSharedKeyExtension{
+			Identities: []PskIdentity{{Label: []byte("a ticket of nobody's"), ObfuscatedTicketAge: 1}},
+			Binders:    [][]byte{make([]byte, 32)},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if run.clientErr == nil || !strings.Contains(run.clientErr.Error(), "recomputable pre_shared_key") {
+		t.Errorf("a HelloRetryRequest after a fake PSK: %v", run.clientErr)
+	}
+	if len(run.hellos) != 1 {
+		t.Errorf("%d hellos sent, want the first alone", len(run.hellos))
+	}
+}
