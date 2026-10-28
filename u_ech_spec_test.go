@@ -531,6 +531,14 @@ type echRun struct {
 // Chrome's policy says, to a server of serverConfig; cache resumes.
 func (s *echTestServer) handshake(t testing.TB, list []byte, serverConfig *stdtls.Config, cache ClientSessionCache) echRun {
 	t.Helper()
+	return s.handshakeWith(t, serverConfig, cache, func(c *Config) { c.EncryptedClientHelloConfigList = list }, nil, nil)
+}
+
+// handshakeWith is handshake with the client's config and Chrome's spec as
+// configure and respec change them, and the client as ready makes it ready,
+// when given.
+func (s *echTestServer) handshakeWith(t testing.TB, serverConfig *stdtls.Config, cache ClientSessionCache, configure func(*Config), respec func(*ClientHelloSpec), ready func(*UConn)) echRun {
+	t.Helper()
 	c, sc := localPipe(t)
 	rec := &recorder{Conn: sc}
 	var run echRun
@@ -547,11 +555,21 @@ func (s *echTestServer) handshake(t testing.TB, list []byte, serverConfig *stdtl
 		srv.Write([]byte("ok"))
 		_, run.readErr = io.Copy(io.Discard, srv)
 	}()
-	config := &Config{ServerName: "secret.example", RootCAs: s.roots, EncryptedClientHelloConfigList: list,
+	config := &Config{ServerName: "secret.example", RootCAs: s.roots,
 		Behavior: policyOf(t, chromeECHPolicy), ClientSessionCache: cache, OmitEmptyPsk: true}
+	if configure != nil {
+		configure(config)
+	}
 	uc := UClient(c, config, HelloCustom, false, false, false)
-	if err := uc.ApplyPreset(chromeHelloSpec(t)); err != nil {
+	spec := chromeHelloSpec(t)
+	if respec != nil {
+		respec(spec)
+	}
+	if err := uc.ApplyPreset(spec); err != nil {
 		t.Fatal(err)
+	}
+	if ready != nil {
+		ready(uc)
 	}
 	uc.SetDeadline(time.Now().Add(10 * time.Second))
 	if run.clientErr = uc.Handshake(); run.clientErr == nil {

@@ -406,3 +406,13 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   the registry allowed 2147483647, so a profile could let one zstd layer keep
   a 2 GiB window. Every shipped, catalogue and frozen legacy value is
   8388608. `TestZstdWindowPolicy` holds the ceiling and one byte past it.
+
+- Negative controls of the review of 2026-10-28 (`u_negative_controls_test.go`):
+  each fails with its check taken away, and none of utls's tests did before.
+  A server Finished, and a KeyUpdate, with another handshake message after it
+  in its record (refused: it was sealed under the read keys that end there);
+  a HelloRetryRequest whose suite hashes otherwise than the session's (the
+  second hello offers no pre_shared_key, RFC 8446 4.1.4; a Go server picks
+  the SHA-384 suite with AES hardware, and the test is skipped without); the
+  second hello saying the ticket's age anew (a clock a second later at each
+  reading).
