@@ -416,3 +416,8 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   the SHA-384 suite with AES hardware, and the test is skipped without); the
   second hello saying the ticket's age anew (a clock a second later at each
   reading).
+- `quicSetReadSecret` refuses handshake bytes left in the buffer, as Go
+  1.26.10's does (CVE-2025-61730): the generic guard of 54dd25b covered every
+  read key but a QUIC server's 0-RTT one, set right after the ClientHello,
+  so a message that came after the hello in its Initial CRYPTO data was read
+  under the early keys. `TestAQUICServerRefusesWhatFollowsAHelloWithEarlyData`.

@@ -205,3 +205,58 @@ func helloOf(t *testing.T, raw []byte) *clientHelloMsg {
 	}
 	return m
 }
+
+// A QUIC server that takes 0-RTT sets its early read key right after the
+// ClientHello: anything that came after the hello in its CRYPTO data came
+// under the Initial keys and is refused, as Go 1.26.10's crypto/tls refuses it.
+func TestAQUICServerRefusesWhatFollowsAHelloWithEarlyData(t *testing.T) {
+	clientConfig := &QUICConfig{TLSConfig: testConfig.Clone()}
+	clientConfig.TLSConfig.MinVersion = VersionTLS13
+	clientConfig.TLSConfig.ClientSessionCache = NewLRUClientSessionCache(1)
+	clientConfig.TLSConfig.ServerName = "example.go.dev"
+	clientConfig.TLSConfig.NextProtos = []string{"h3"}
+	serverConfig := &QUICConfig{TLSConfig: testConfig.Clone()}
+	serverConfig.TLSConfig.MinVersion = VersionTLS13
+	serverConfig.TLSConfig.NextProtos = []string{"h3"}
+
+	cli := newTestQUICClient(t, clientConfig)
+	cli.conn.SetTransportParameters(nil)
+	srv := newTestQUICServer(t, serverConfig)
+	srv.conn.SetTransportParameters(nil)
+	srv.ticketOpts.EarlyData = true
+	if err := runTestQUICConnection(context.Background(), cli, srv, nil); err != nil {
+		t.Fatalf("first connection: %v", err)
+	}
+
+	cli2 := newTestQUICClient(t, clientConfig)
+	cli2.conn.SetTransportParameters(nil)
+	srv2 := newTestQUICServer(t, serverConfig)
+	srv2.conn.SetTransportParameters(nil)
+	after, err := (&keyUpdateMsg{}).marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var handled error
+	sent, answered := false, false
+	onEvent := func(e QUICEvent, src, dst *testQUICConn) bool {
+		if src == srv2 && e.Kind == QUICWriteData {
+			answered = true
+		}
+		if src != cli2 || e.Kind != QUICWriteData || e.Level != QUICEncryptionLevelInitial || sent {
+			return false
+		}
+		sent = true
+		handled = dst.conn.HandleData(e.Level, append(slices.Clone(e.Data), after...))
+		return true
+	}
+	_ = runTestQUICConnection(context.Background(), cli2, srv2, onEvent)
+	if handled == nil || !strings.Contains(handled.Error(), handshakeBufferNotEmpty) {
+		t.Errorf("the server took a hello with more after it: %v, want %q", handled, handshakeBufferNotEmpty)
+	}
+	if srv2.readSecret[QUICEncryptionLevelEarly].secret != nil {
+		t.Error("the server set its early read key with a message of the Initial keys left")
+	}
+	if answered {
+		t.Error("the server answered a hello with a message of the Initial keys left after it")
+	}
+}
