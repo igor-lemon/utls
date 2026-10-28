@@ -1113,22 +1113,22 @@ func TestASessionIsKeptByTheIdentitiesASecondHelloKeeps(t *testing.T) {
 
 func TestACookieOfAHelloRetryRequestIsEchoed(t *testing.T) {
 	uc := &UConn{Extensions: []TLSExtension{&SNIExtension{}, &CookieExtension{}, &UtlsPaddingExtension{}}}
-	if err := uc.cookieForRetry(nil); err != nil || uc.Extensions[1].(*CookieExtension).Cookie != nil {
-		t.Errorf("no cookie: %v", err)
+	if uc.cookieForRetry(nil); uc.Extensions[1].(*CookieExtension).Cookie != nil {
+		t.Error("no cookie, and one echoed")
 	}
-	if err := uc.cookieForRetry([]byte("c")); err != nil || string(uc.Extensions[1].(*CookieExtension).Cookie) != "c" {
-		t.Errorf("the profile's cookie: %v", err)
+	if uc.cookieForRetry([]byte("c")); string(uc.Extensions[1].(*CookieExtension).Cookie) != "c" || len(uc.Extensions) != 3 {
+		t.Error("the profile's cookie is not the one echoed")
 	}
 	uc.Extensions = []TLSExtension{&SNIExtension{}, &UtlsPaddingExtension{}, &UtlsPreSharedKeyExtension{}}
-	if err := uc.cookieForRetry([]byte("c")); err != nil || len(uc.Extensions) != 4 {
-		t.Fatalf("a cookie of its own: %v", err)
+	if uc.cookieForRetry([]byte("c")); len(uc.Extensions) != 4 {
+		t.Fatal("no cookie of its own")
 	}
 	if _, ok := uc.Extensions[3].(*UtlsPreSharedKeyExtension); !ok {
 		t.Error("the cookie went after the pre_shared_key")
 	}
-	uc.Extensions = []TLSExtension{&SNIExtension{}, &UtlsPaddingExtension{}}
-	if err := uc.cookieForRetry([]byte("c")); err == nil {
-		t.Error("no place for a cookie, and no error")
+	uc.Extensions = nil
+	if uc.cookieForRetry([]byte("c")); len(uc.Extensions) != 1 {
+		t.Error("a hello of no extensions has no cookie")
 	}
 }
 
