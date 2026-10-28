@@ -280,12 +280,17 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   included (tls-forge's `go test -count=2 .` hung so in its key log tests).
   A `defer` lets go of it now. Tests `u_key_log_test.go`:
   `TestAKeyLogThatFailedHoldsUpNoLaterHandshake` (TLS 1.3 and 1.2: a writer
-  that fails, then one that works; a file that cannot be opened, then one
-  that can, which holds the lines of both ends; each handshake given ten
-  seconds, so that the old code fails in seconds) and
-  `TestKeyLogsAreWrittenOneAtATime` (a handshake whose write is held keeps
-  another's from writing until it is let go of); 7 mutants, all killed, and
-  one equivalent (the `defer` before the `Lock`).
+  that fails, then one that works; each handshake given ten seconds, so that
+  the old code fails in seconds) and `TestKeyLogsAreWrittenOneAtATime` (a
+  handshake whose write is held keeps another's from writing until it is let
+  go of); 7 mutants, all killed, and one equivalent (the `defer` before the
+  `Lock`). Since 18ad370 (2026-10-27, tls-forge's S08) `writeKeyLog` writes to
+  the Config's `KeyLogWriter` alone and passes over `SSLKEYLOGFILE`, on a
+  client and a server alike: an environment variable is no consent to give
+  away a connection's secrets. The halves of these tests that wrote through
+  a file `SSLKEYLOGFILE` named went with it; `u_key_log_consent_test.go`'s
+  `TestKeyLogEnvironmentIsNotConsent` holds that a named file, there or not,
+  is neither written nor made, and that an explicit writer still is.
 - `behavior` registers a QUIC client after its handshake as Chrome 155's
   (2026-10-26): `quic.ecn` (`ect0`, quic-go's validated ECT(0), or `none`),
   `quic.mtu_probes` (`search`, quic-go's DPLPMTUD, or `none`),
