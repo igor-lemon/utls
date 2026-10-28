@@ -428,3 +428,8 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   `rand.IntN(len - 2)`: before the opening GREASE about once in 17 of
   Chrome's hellos, a shape Chrome's never has, and never just before the
   closing ones. `TestACookieGoesAmongTheExtensionsBoringSSLPermutes`.
+- A HelloRetryRequest after a `FakePreSharedKeyExtension` (a PSK of the
+  caller's bytes, set with `SetPskExtension`) is an error,
+  `requires a recomputable pre_shared_key extension`, as for any PSK whose
+  binder cannot be made again: crypto/tls's code read the suite of a session
+  there is none of, and panicked. `TestAHelloRetryRequestAfterAFakePSKIsAnError`.

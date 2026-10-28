@@ -358,6 +358,13 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 		hello.keyShares = []keyShare{{group: curveID, data: key.PublicKey().Bytes()}}
 	}
 
+	// [uTLS] A pre_shared_key of the caller's own bytes
+	// (FakePreSharedKeyExtension) has no session to say its suite or to bind
+	// a second hello with.
+	if len(hello.pskIdentities) > 0 && hs.session == nil {
+		c.sendAlert(alertInternalError)
+		return errors.New("uTLS: HelloRetryRequest requires a recomputable pre_shared_key extension")
+	}
 	if len(hello.pskIdentities) > 0 {
 		pskSuite := cipherSuiteTLS13ByID(hs.session.cipherSuite)
 		if pskSuite == nil {
