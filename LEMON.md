@@ -395,3 +395,9 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   links, says io.ErrUnexpectedEOF there; utls now requires it, so a module
   built on utls alone refuses such a stream too
   (TestATruncatedBrotliCertificateIsRefused cuts every prefix).
+
+- `http.zstd_window_bytes` has an engine ceiling, `MaxZstdWindowBytes`
+  (128 MiB, sixteen times the 8 MiB RFC 9659 holds a zstd content coding to):
+  the registry allowed 2147483647, so a profile could let one zstd layer keep
+  a 2 GiB window. Every shipped, catalogue and frozen legacy value is
+  8388608. `TestZstdWindowPolicy` holds the ceiling and one byte past it.

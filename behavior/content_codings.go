@@ -10,6 +10,11 @@ import (
 // chain, independent of the browser's lower limit in its profile.
 const MaxContentCodings = 64
 
+// MaxZstdWindowBytes is a hard resource ceiling for the window a zstd layer
+// may ask its decoder to keep, sixteen times the 8 MiB RFC 9659 holds a zstd
+// content coding to, whatever a profile's http.zstd_window_bytes says.
+const MaxZstdWindowBytes = 1 << 27
+
 func validateContentCodings(p Policy) error {
 	if p.Has("http.ignored_content_codings") {
 		ignored := p.Strings("http.ignored_content_codings")
