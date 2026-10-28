@@ -695,7 +695,9 @@ func (hs *clientHandshakeStateTLS13) establishHandshakeKeys() error {
 
 	if c.quic != nil {
 		c.quicSetWriteSecret(QUICEncryptionLevelHandshake, hs.suite.id, clientSecret)
-		c.quicSetReadSecret(QUICEncryptionLevelHandshake, hs.suite.id, serverSecret)
+		if err := c.quicSetReadSecret(QUICEncryptionLevelHandshake, hs.suite.id, serverSecret); err != nil {
+			return err
+		}
 	}
 
 	err = c.config.writeKeyLog(keyLogLabelClientHandshake, hs.hello.random, clientSecret)

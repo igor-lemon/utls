@@ -456,7 +456,9 @@ func (hs *serverHandshakeStateTLS13) checkForResumption() error {
 				return err
 			}
 			earlyTrafficSecret := hs.earlySecret.ClientEarlyTrafficSecret(transcript)
-			c.quicSetReadSecret(QUICEncryptionLevelEarly, hs.suite.id, earlyTrafficSecret)
+			if err := c.quicSetReadSecret(QUICEncryptionLevelEarly, hs.suite.id, earlyTrafficSecret); err != nil {
+				return err
+			}
 		}
 
 		c.didResume = true
@@ -784,7 +786,9 @@ func (hs *serverHandshakeStateTLS13) sendServerParameters() error {
 
 	if c.quic != nil {
 		c.quicSetWriteSecret(QUICEncryptionLevelHandshake, hs.suite.id, serverSecret)
-		c.quicSetReadSecret(QUICEncryptionLevelHandshake, hs.suite.id, clientSecret)
+		if err := c.quicSetReadSecret(QUICEncryptionLevelHandshake, hs.suite.id, clientSecret); err != nil {
+			return err
+		}
 	}
 
 	err := c.config.writeKeyLog(keyLogLabelClientHandshake, hs.clientHello.random, clientSecret)
