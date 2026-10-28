@@ -2,17 +2,27 @@ package behavior
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
 
 func TestCookiePrefixPolicy(t *testing.T) {
 	valid := `[{"prefix":"__Host-","case_sensitive":false,"reject_nameless":true,"attributes":["secure","host-only","root-path"]}]`
-	for _, raw := range []string{`[]`, valid} {
+	// The engine's ceilings, at their edges: 64 rules, and a prefix of 256 bytes.
+	var most []string
+	for i := 0; i < 64; i++ {
+		most = append(most, strings.Replace(strings.Trim(valid, "[]"), `"__Host-"`, fmt.Sprintf(`"__Rule%d-"`, i), 1))
+	}
+	longest := strings.Replace(valid, `"__Host-"`, `"`+strings.Repeat("x", 256)+`"`, 1)
+	for _, raw := range []string{`[]`, valid, "[" + strings.Join(most, ",") + "]", longest} {
 		p := Policy{"cookie.prefixes": json.RawMessage(raw)}
 		if err := p.Validate(); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if rules := (Policy{"cookie.prefixes": json.RawMessage("[" + strings.Join(most, ",") + "]")}).CookiePrefixes(); len(rules) != 64 || rules[63].Prefix != "__Rule63-" {
+		t.Fatal("64 rules not kept as given")
 	}
 	for _, raw := range []string{
 		`null`, `{}`, `[null]`, `[{}]`,
