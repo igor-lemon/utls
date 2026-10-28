@@ -420,7 +420,8 @@ func (hs *clientHandshakeStateTLS13) processHelloRetryRequest() error {
 			}
 
 			// The cookie goes in before the hello is marshalled again.
-			if err := errors.Join(hs.uconn.cookieForRetry(hs.serverHello.cookie), hs.uconn.MarshalClientHelloNoECH()); err != nil {
+			hs.uconn.cookieForRetry(hs.serverHello.cookie)
+			if err := hs.uconn.MarshalClientHelloNoECH(); err != nil {
 				return err
 			}
 			hs.hello.original = hs.uconn.HandshakeState.Hello.Raw

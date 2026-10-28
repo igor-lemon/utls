@@ -260,3 +260,51 @@ func TestAQUICServerRefusesWhatFollowsAHelloWithEarlyData(t *testing.T) {
 		t.Error("the server answered a hello with a message of the Initial keys left after it")
 	}
 }
+
+// A cookie a profile has no extension of its own for goes where BoringSSL's
+// permutation puts it, as Chrome's does: among the extensions it permutes,
+// after the GREASE extension that opens the hello and before those that
+// close it (GREASE, padding, pre_shared_key), each place as likely.
+func TestACookieGoesAmongTheExtensionsBoringSSLPermutes(t *testing.T) {
+	own := func(n int) []TLSExtension {
+		var out []TLSExtension
+		for i := 0; i < n; i++ {
+			out = append(out, &GenericExtension{Id: uint16(1000 + i)})
+		}
+		return out
+	}
+	join := func(parts ...[]TLSExtension) []TLSExtension { return slices.Concat(parts...) }
+	opening, closing := []TLSExtension{&UtlsGREASEExtension{}}, []TLSExtension{&UtlsGREASEExtension{}}
+	for _, tc := range []struct {
+		name        string
+		extensions  []TLSExtension
+		first, last int // the places the cookie may take, both included
+	}{
+		{"Chrome's, resumable", join(opening, own(16), closing, []TLSExtension{&UtlsPreSharedKeyExtension{}}), 1, 17},
+		{"Chrome's, not resumable", join(opening, own(16), closing), 1, 17},
+		{"padded", join(opening, own(5), closing, []TLSExtension{&UtlsPaddingExtension{}, &UtlsPreSharedKeyExtension{}}), 1, 6},
+		{"without GREASE", join(own(3), []TLSExtension{&UtlsPaddingExtension{}, &UtlsPreSharedKeyExtension{}}), 0, 3},
+		{"nothing of its own", join(opening, closing), 1, 1},
+	} {
+		seen := map[int]int{}
+		for draw := 0; draw < 3000; draw++ {
+			uc := &UConn{Extensions: slices.Clone(tc.extensions)}
+			uc.cookieForRetry([]byte("c"))
+			at := slices.IndexFunc(uc.Extensions, func(e TLSExtension) bool { _, ok := e.(*CookieExtension); return ok })
+			if len(uc.Extensions) != len(tc.extensions)+1 || at < 0 {
+				t.Fatalf("%s: the cookie went nowhere", tc.name)
+			}
+			seen[at]++
+		}
+		for at := range seen {
+			if at < tc.first || at > tc.last {
+				t.Errorf("%s: the cookie went at %d, out of %d..%d", tc.name, at, tc.first, tc.last)
+			}
+		}
+		for at := tc.first; at <= tc.last; at++ {
+			if seen[at] == 0 {
+				t.Errorf("%s: the cookie never went at %d of %d..%d", tc.name, at, tc.first, tc.last)
+			}
+		}
+	}
+}

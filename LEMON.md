@@ -421,3 +421,10 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   read key but a QUIC server's 0-RTT one, set right after the ClientHello,
   so a message that came after the hello in its Initial CRYPTO data was read
   under the early keys. `TestAQUICServerRefusesWhatFollowsAHelloWithEarlyData`.
+- A cookie a profile has no extension of its own for goes where BoringSSL's
+  permutation puts it (`cookieForRetry`): among the extensions it permutes,
+  after a GREASE extension that opens the hello and before those that close
+  it (GREASE, padding, pre_shared_key), each place as likely. It went at
+  `rand.IntN(len - 2)`: before the opening GREASE about once in 17 of
+  Chrome's hellos, a shape Chrome's never has, and never just before the
+  closing ones. `TestACookieGoesAmongTheExtensionsBoringSSLPermutes`.

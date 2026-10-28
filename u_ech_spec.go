@@ -2,7 +2,6 @@ package tls
 
 import (
 	"errors"
-	"fmt"
 	"hash"
 	"io"
 	mathrand "math/rand/v2"
@@ -464,9 +463,9 @@ func (uconn *UConn) helloRetrySpecECH(hs *clientHandshakeStateTLS13, hello *clie
 			ks.KeyShares = keyShares(hello.keyShares).ToPublic()
 		}
 	}
-	cookieErr := uconn.cookieForRetry(hs.serverHello.cookie)
+	uconn.cookieForRetry(hs.serverHello.cookie)
 	uconn.echSpec.psk = uconn.echSpec.psk.keptBy(hello.pskIdentities)
-	if err := errors.Join(cookieErr, uconn.sealSpecECH(nil, cloneHash(hs.echContext.innerTranscript, hs.suite.hash))); err != nil {
+	if err := uconn.sealSpecECH(nil, cloneHash(hs.echContext.innerTranscript, hs.suite.hash)); err != nil {
 		return err
 	}
 	hs.hello.original = uconn.HandshakeState.Hello.Raw
@@ -475,11 +474,13 @@ func (uconn *UConn) helloRetrySpecECH(hs *clientHandshakeStateTLS13, hello *clie
 
 // cookieForRetry echoes the cookie of a HelloRetryRequest, if it has one, in
 // uconn's cookie extension, which goes where the profile has it or, when it
-// has none, somewhere before its last two extensions (so that a
-// pre_shared_key stays last).
-func (uconn *UConn) cookieForRetry(cookie []byte) error {
+// has none, where BoringSSL's permutation puts it: among the extensions it
+// permutes, after a GREASE extension that opens the hello and before those
+// that close it (GREASE, padding, pre_shared_key, which stays last), each
+// place as likely.
+func (uconn *UConn) cookieForRetry(cookie []byte) {
 	if len(cookie) == 0 {
-		return nil
+		return
 	}
 	found := false
 	for _, ext := range uconn.Extensions {
@@ -489,14 +490,34 @@ func (uconn *UConn) cookieForRetry(cookie []byte) error {
 		}
 	}
 	if found {
+		return
+	}
+	first, last := 0, len(uconn.Extensions)
+	if _, ok := firstOf(uconn.Extensions).(*UtlsGREASEExtension); ok {
+		first = 1
+	}
+	for last > first && closesHello(uconn.Extensions[last-1]) {
+		last--
+	}
+	at := first + mathrand.IntN(last-first+1)
+	uconn.Extensions = slices.Insert(uconn.Extensions, at, TLSExtension(&CookieExtension{Cookie: cookie}))
+}
+
+func firstOf(extensions []TLSExtension) TLSExtension {
+	if len(extensions) == 0 {
 		return nil
 	}
-	if len(uconn.Extensions) < 3 {
-		return fmt.Errorf("tls: no place for a cookie among %d extensions", len(uconn.Extensions))
+	return extensions[0]
+}
+
+// closesHello says ext is one BoringSSL writes after the extensions it
+// permutes: the last GREASE extension, padding, pre_shared_key.
+func closesHello(ext TLSExtension) bool {
+	switch ext.(type) {
+	case *UtlsGREASEExtension, *UtlsPaddingExtension, PreSharedKeyExtension:
+		return true
 	}
-	at := mathrand.IntN(len(uconn.Extensions) - 2)
-	uconn.Extensions = slices.Insert(uconn.Extensions, at, TLSExtension(&CookieExtension{Cookie: cookie}))
-	return nil
+	return false
 }
 
 // echPublicName says whether name may be a config's public name, as
