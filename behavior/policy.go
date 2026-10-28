@@ -374,7 +374,7 @@ var supported = map[string]spec{
 	"http.preflight_max_age_seconds":               {kind: "number", min: 0, max: 4294967295, choices: []string{}},
 	"http.max_site_pools":                          {kind: "number", min: 1, max: 2147483647, choices: []string{}},
 	"http.body_read_bytes":                         {kind: "number", min: 1, max: 2147483647, choices: []string{}},
-	"http.zstd_window_bytes":                       {kind: "number", min: 1, max: 2147483647, choices: []string{}},
+	"http.zstd_window_bytes":                       {kind: "number", min: 1, max: MaxZstdWindowBytes, choices: []string{}},
 	"http.content_codings":                         {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
 	"http.gzip_decoder":                            {kind: "text", min: 0, max: 4294967295, choices: []string{"prefix-first-member", "rfc1952"}},
 	"cookie.raw_fields":                            {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},

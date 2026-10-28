@@ -47,3 +47,21 @@ func TestContentCodingPolicy(t *testing.T) {
 		t.Fatal("migration choices lost data ownership or clone isolation")
 	}
 }
+
+// A zstd body's window is a resource the engine bounds: no profile may let a
+// layer ask for more than MaxZstdWindowBytes.
+func TestZstdWindowPolicy(t *testing.T) {
+	for _, value := range []string{"1", "8388608", "134217728"} {
+		if err := (Policy{"http.zstd_window_bytes": json.RawMessage(value)}).Validate(); err != nil {
+			t.Fatal(value, err)
+		}
+	}
+	for _, value := range []string{"0", "134217729", "2147483647", "-1", "1.5", `"8388608"`} {
+		if err := (Policy{"http.zstd_window_bytes": json.RawMessage(value)}).Validate(); err == nil {
+			t.Fatal("accepted a zstd window of", value)
+		}
+	}
+	if Legacy().Uint("http.zstd_window_bytes") > MaxZstdWindowBytes || Generic().Uint("http.zstd_window_bytes") > MaxZstdWindowBytes {
+		t.Fatal("frozen migration data past the bound")
+	}
+}
