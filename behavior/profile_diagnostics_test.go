@@ -28,7 +28,7 @@ func TestHTTP3ProfileBoundsNameValueAndLimit(t *testing.T) {
 	}
 }
 
-func TestGREASESettingPlacementIsExplicitAndValidated(t *testing.T) {
+func TestGREASESettingPlacementValuesAreValidated(t *testing.T) {
 	for _, choice := range []string{"last", "before-greater-id"} {
 		p := Legacy()
 		p["h3.grease_setting_placement"], _ = json.Marshal(choice)
@@ -43,9 +43,12 @@ func TestGREASESettingPlacementIsExplicitAndValidated(t *testing.T) {
 			t.Fatal("invalid placement accepted", raw)
 		}
 	}
+}
+
+func TestPlacementAbsenceCanBeInspectedWithoutGrantingExecution(t *testing.T) {
 	p := Legacy()
 	delete(p, "h3.grease_setting_placement")
-	if err := p.Validate(); err == nil {
-		t.Fatal("implicit placement accepted")
+	if err := p.Validate(); err != nil {
+		t.Fatal("generic archive validation acquired an engine-specific required rule", err)
 	}
 }
