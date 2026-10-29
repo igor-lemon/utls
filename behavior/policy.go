@@ -157,6 +157,7 @@ var supported = map[string]spec{
 	"h3.grease_setting_n_min":                      {kind: "number", max: 1<<62 - 1},
 	"h3.grease_setting_n_max":                      {kind: "number", max: 1<<62 - 1},
 	"h3.grease_setting_nonzero":                    {kind: "boolean", max: 1<<62 - 1},
+	"h3.grease_setting_placement":                  {kind: "text", choices: []string{"last", "before-greater-id"}},
 	"h3.grease_frame_n_bits":                       {kind: "number", max: 1<<62 - 1},
 	"h3.priority_value":                            {kind: "text", max: 1<<62 - 1},
 	"headers.browser_base_fields":                  {kind: "texts", max: 1<<62 - 1},
@@ -936,6 +937,9 @@ func (p Policy) Validate() error {
 		}
 		if p.Flag("h3.grease_settings") && (!p.Has("h3.grease_setting_n_min") || !p.Has("h3.grease_setting_n_max")) {
 			return fmt.Errorf("GREASE settings require an explicit range")
+		}
+		if p.Flag("h3.grease_settings") && !p.Has("h3.grease_setting_placement") {
+			return fmt.Errorf("GREASE settings require an explicit placement")
 		}
 		if p.Flag("h3.grease_frames") && !p.Has("h3.grease_frame_n_bits") {
 			return fmt.Errorf("GREASE frames require an explicit range")
