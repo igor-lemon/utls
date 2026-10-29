@@ -27,3 +27,25 @@ func TestHTTP3ProfileBoundsNameValueAndLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestGREASESettingPlacementIsExplicitAndValidated(t *testing.T) {
+	for _, choice := range []string{"last", "before-greater-id"} {
+		p := Legacy()
+		p["h3.grease_setting_placement"], _ = json.Marshal(choice)
+		if err := p.Validate(); err != nil {
+			t.Fatal(choice, err)
+		}
+	}
+	for _, raw := range []string{`"unknown"`, `0`, `null`, `true`} {
+		p := Legacy()
+		p["h3.grease_setting_placement"] = json.RawMessage(raw)
+		if err := p.Validate(); err == nil {
+			t.Fatal("invalid placement accepted", raw)
+		}
+	}
+	p := Legacy()
+	delete(p, "h3.grease_setting_placement")
+	if err := p.Validate(); err == nil {
+		t.Fatal("implicit placement accepted")
+	}
+}
