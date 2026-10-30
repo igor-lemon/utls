@@ -55,6 +55,14 @@ var h2RetryErrors = []string{"refused-stream", "goaway-no-error", "goaway-error"
 var givenOrders = []string{"headers.navigation_order", "headers.form_order", "headers.redirected_order", "headers.restarted_order"}
 
 var supported = map[string]spec{
+	"cache.generated_header_order":                 {kind: "cache-order"},
+	"http.instance_scope":                          {kind: "text", choices: []string{"request", "client"}},
+	"http.cache_scope":                             {kind: "text", choices: []string{"browser-context", "explicit-context"}},
+	"http.cache_validators":                        {kind: "cache-validators"},
+	"cache.duplicate_freshness_policy":             {kind: "text", choices: []string{"first", "stale"}},
+	"cache.invalid_freshness_policy":               {kind: "text", choices: []string{"ignore", "stale"}},
+	"cache.freshness_quoted_values":                {kind: "boolean"},
+	"cache.delta_seconds_limit":                    {kind: "number", min: 1, max: 9223372036},
 	"cookie.prefixes":                              {kind: "cookie-prefixes"},
 	"http.max_content_codings":                     {kind: "number", max: MaxContentCodings},
 	"http.content_coding_overflow":                 {kind: "text", choices: []string{"error", "raw"}},
@@ -471,6 +479,45 @@ func (p Policy) Validate() error {
 		}
 		var err error
 		switch s.kind {
+		case "cache-order":
+			var names []string
+			err = json.Unmarshal(raw, &names)
+			seen := map[string]bool{}
+			if len(names) < 2 || len(names) > 256 {
+				err = fmt.Errorf("cache order requires 2..256 fields")
+			}
+			for _, name := range names {
+				if name == "" || len(name) > 256 || name != strings.ToLower(name) || seen[name] {
+					err = fmt.Errorf("invalid or repeated cache field %q", name)
+					break
+				}
+				seen[name] = true
+				for _, c := range name {
+					if c <= 32 || c >= 127 || strings.ContainsRune("()<>@,;:\"/[]?={}\\", c) {
+						err = fmt.Errorf("invalid cache field token")
+						break
+					}
+				}
+			}
+			if !seen["range"] || !seen["if-range"] {
+				err = fmt.Errorf("cache order requires range and if-range")
+			}
+			for _, name := range p.Strings("http.cache_validators") {
+				if !seen[name] {
+					err = fmt.Errorf("cache order is missing validator %s", name)
+				}
+			}
+		case "cache-validators":
+			var names []string
+			err = json.Unmarshal(raw, &names)
+			seen := map[string]bool{}
+			for _, name := range names {
+				if (name != "if-none-match" && name != "if-modified-since") || seen[name] {
+					err = fmt.Errorf("unsupported or repeated cache validator %q", name)
+					break
+				}
+				seen[name] = true
+			}
 		case "cookie-prefixes":
 			_, err = parseCookiePrefixes(raw)
 		case "boolean":
