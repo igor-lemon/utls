@@ -42,5 +42,22 @@
       ]
     }
   ],
-  "h3.grease_setting_placement": "last"
+  "h3.grease_setting_placement": "last",
+  "http.instance_scope": "request",
+  "http.cache_scope": "browser-context",
+  "http.cache_validators": [
+    "if-none-match",
+    "if-modified-since"
+  ],
+  "cache.duplicate_freshness_policy": "first",
+  "cache.invalid_freshness_policy": "ignore",
+  "cache.freshness_quoted_values": false,
+  "cache.delta_seconds_limit": 4294967295,
+  "cache.generated_header_order": [
+    "if-none-match",
+    "if-modified-since",
+    "range",
+    "if-range",
+    "priority"
+  ]
 }
