@@ -433,3 +433,11 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   `requires a recomputable pre_shared_key extension`, as for any PSK whose
   binder cannot be made again: crypto/tls's code read the suite of a session
   there is none of, and panicked. `TestAHelloRetryRequestAfterAFakePSKIsAnError`.
+
+## A11 owned hostname verification
+
+`TestVerifyHostname` uses an owned loopback TLS peer and explicit signing root.
+TLS1.2/TLS1.3 each retain matching-name, post-handshake wrong-name and
+InsecureSkipVerify rejection, and add a typed wrong-name handshake control.
+No DNS/public endpoint or external-network skip remains. Production code and
+profile policy are unchanged; original denied-network failure is retained.

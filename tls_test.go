@@ -34,7 +34,6 @@ import (
 
 	"github.com/igor-lemon/utls/internal/fips140tls"
 	"github.com/igor-lemon/utls/internal/hpke"
-	"github.com/igor-lemon/utls/testenv"
 )
 
 var rsaCertPEM = `-----BEGIN CERTIFICATE-----
@@ -523,25 +522,90 @@ func TestTLSUniqueMatches(t *testing.T) {
 }
 
 func TestVerifyHostname(t *testing.T) {
-	testenv.MustHaveExternalNetwork(t)
-
-	c, err := Dial("tcp", "www.google.com:https", nil)
+	// The hostname contract needs a verified connection, not a public site.
+	// Own the signing root so the positive and wrong-name controls are stable
+	// offline and cannot pass merely because an external dial failed.
+	now := time.Now()
+	template := &x509.Certificate{SerialNumber: big.NewInt(911),
+		Subject: pkix.Name{CommonName: "owned.example"}, DNSNames: []string{"owned.example"},
+		NotBefore: now.Add(-time.Hour), NotAfter: now.Add(time.Hour),
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, BasicConstraintsValid: true, IsCA: true}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &testRSAPrivateKey.PublicKey, testRSAPrivateKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.VerifyHostname("www.google.com"); err != nil {
-		t.Fatalf("verify www.google.com: %v", err)
-	}
-	if err := c.VerifyHostname("www.yahoo.com"); err == nil {
-		t.Fatalf("verify www.yahoo.com succeeded")
-	}
-
-	c, err = Dial("tcp", "www.google.com:https", &Config{InsecureSkipVerify: true})
+	certificate, err := x509.ParseCertificate(der)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.VerifyHostname("www.google.com"); err == nil {
-		t.Fatalf("verify www.google.com succeeded with InsecureSkipVerify=true")
+	roots := x509.NewCertPool()
+	roots.AddCert(certificate)
+	for _, version := range []uint16{VersionTLS12, VersionTLS13} {
+		t.Run(VersionName(version), func(t *testing.T) {
+			for _, mode := range []string{"verified", "wrong-name", "insecure"} {
+				t.Run(mode, func(t *testing.T) {
+					ln, err := Listen("tcp", "127.0.0.1:0", &Config{MinVersion: version, MaxVersion: version,
+						Certificates: []Certificate{{Certificate: [][]byte{der}, PrivateKey: testRSAPrivateKey}}})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer ln.Close()
+					peer := make(chan error, 1)
+					go func() {
+						conn, err := ln.Accept()
+						if err != nil {
+							peer <- err
+							return
+						}
+						defer conn.Close()
+						_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+						peer <- conn.(*Conn).Handshake()
+					}()
+					cfg := &Config{MinVersion: version, MaxVersion: version, RootCAs: roots, ServerName: "owned.example",
+						InsecureSkipVerify: mode == "insecure"}
+					if mode == "wrong-name" {
+						cfg.ServerName = "wrong.example"
+					}
+					c, err := DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", ln.Addr().String(), cfg)
+					if mode == "wrong-name" {
+						var hostname x509.HostnameError
+						if !errors.As(err, &hostname) {
+							t.Fatalf("wrong-name handshake = %v, want hostname error", err)
+						}
+						if peerErr := <-peer; peerErr == nil {
+							t.Fatal("peer accepted rejected handshake")
+						}
+						return
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer c.Close()
+					if mode == "insecure" {
+						if err := c.VerifyHostname("owned.example"); err == nil {
+							t.Fatal("VerifyHostname succeeded without verified chains")
+						}
+						if len(c.ConnectionState().VerifiedChains) != 0 {
+							t.Fatal("insecure connection acquired verified chains")
+						}
+					} else {
+						if err := c.VerifyHostname("owned.example"); err != nil {
+							t.Fatalf("verify owned name: %v", err)
+						}
+						if err := c.VerifyHostname("wrong.example"); err == nil {
+							t.Fatal("wrong hostname accepted")
+						}
+						if len(c.ConnectionState().VerifiedChains) == 0 {
+							t.Fatal("positive control did not verify its root")
+						}
+					}
+					if peerErr := <-peer; peerErr != nil {
+						t.Fatalf("owned peer handshake: %v", peerErr)
+					}
+				})
+			}
+		})
 	}
 }
 
