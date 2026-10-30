@@ -59,5 +59,8 @@
     "range",
     "if-range",
     "priority"
-  ]
+  ],
+  "dns.https_query_recursion_desired": true,
+  "dns.https_query_udp_payload_bytes": 4096,
+  "dns.https_query_timeout_ms": 2000
 }

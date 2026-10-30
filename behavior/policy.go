@@ -183,6 +183,9 @@ var supported = map[string]spec{
 	"tls.ech_outer_psk":                            {kind: "text", choices: []string{"none"}},
 	"tls.ech_retries":                              {kind: "number", max: 8},
 	"tls.ech_retry_without":                        {kind: "boolean"},
+	"dns.https_query_recursion_desired":            {kind: "boolean"},
+	"dns.https_query_udp_payload_bytes":            {kind: "number", min: 512, max: 65535},
+	"dns.https_query_timeout_ms":                   {kind: "number", min: 1, max: 60000},
 	"dns.https_records":                            {kind: "boolean"},
 	"dns.https_wait_percent":                       {kind: "number", max: 100},
 	"dns.https_wait_min_ms":                        {kind: "number", max: 60000},
@@ -957,6 +960,9 @@ func (p Policy) Validate() error {
 		return fmt.Errorf("invalid preflight Accept value")
 	}
 
+	if err := validateDNSQuery(p); err != nil {
+		return err
+	}
 	if err := validateECH(p); err != nil {
 		return err
 	}
