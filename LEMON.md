@@ -37,6 +37,13 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 
 ## Patches
 
+- **Hardware cipher selection capability (A13, pending engine1)**:
+  `AESGCMHardwareSupport` reports the crypto backend's CPU capability, including
+  Go feature overrides. It selects no wire values: owner JSON supplies the cipher
+  vectors and selection algorithm. Native/profile comparison retains both AES and
+  no-AES process cohorts; this API alone establishes no browser verdict.
+
+
 - **Explicit QUIC transport and layout policies (A13, pending engine1)**:
   separate initial/max receive windows, keepalive and bounded session capacities;
   explicit TCP-adapter versus independent QUIC TLS source; full supported TP slot
