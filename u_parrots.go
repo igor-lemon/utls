@@ -3453,6 +3453,10 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			uconn.HandshakeState.State13.KeyShareKeys.Keys = make(map[CurveID]*ecdh.PrivateKey)
 			// [FIX END]
 
+			reuseKeys, err := keyShareReuseKeys(ext.KeyShares, uconn.config.rand())
+			if err != nil {
+				return err
+			}
 			for i := range ext.KeyShares {
 				curveID := ext.KeyShares[i].Group
 				if isGREASEUint16(uint16(curveID)) { // just in case the user set a GREASE value instead of unGREASEd
@@ -3464,9 +3468,13 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 				}
 
 				if curveID == X25519MLKEM768 || curveID == X25519Kyber768Draft00 {
-					ecdheKey, err := generateECDHEKey(uconn.config.rand(), X25519)
-					if err != nil {
-						return err
+					ecdheKey := reuseKeys[curveID]
+					if ecdheKey == nil {
+						var err error
+						ecdheKey, err = generateECDHEKey(uconn.config.rand(), X25519)
+						if err != nil {
+							return err
+						}
 					}
 					seed := make([]byte, mlkem.SeedSize)
 					if _, err := io.ReadFull(uconn.config.rand(), seed); err != nil {
@@ -3485,10 +3493,14 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 					uconn.HandshakeState.State13.KeyShareKeys.Mlkem = mlkemKey
 					uconn.HandshakeState.State13.KeyShareKeys.MlkemEcdhe = ecdheKey
 				} else {
-					ecdheKey, err := generateECDHEKey(uconn.config.rand(), curveID)
-					if err != nil {
-						return fmt.Errorf("unsupported Curve in KeyShareExtension: %v."+
-							"To mimic it, fill the Data(key) field manually", curveID)
+					ecdheKey := reuseKeys[ext.KeyShares[i].ReuseWith]
+					if ecdheKey == nil {
+						var err error
+						ecdheKey, err = generateECDHEKey(uconn.config.rand(), curveID)
+						if err != nil {
+							return fmt.Errorf("unsupported Curve in KeyShareExtension: %v."+
+								"To mimic it, fill the Data(key) field manually", curveID)
+						}
 					}
 
 					// [FIX START] Always store the key in the map

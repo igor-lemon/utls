@@ -629,6 +629,9 @@ func (fh *finishedHash) getPublicObj() FinishedHash {
 type KeyShare struct {
 	Group CurveID `json:"group"`
 	Data  []byte  `json:"key_exchange,omitempty"` // optional
+	// ReuseWith selects a fresh hybrid share whose X25519 component is reused.
+	// Zero keeps independent key generation; Data must be empty when selected.
+	ReuseWith CurveID `json:"reuse_with,omitempty"`
 }
 
 func (ks KeyShare) ToPrivate() keyShare {

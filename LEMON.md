@@ -37,6 +37,20 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 
 ## Patches
 
+- **Explicit fresh hybrid/X25519 key reuse (A13, pending engine1)**:
+  `KeyShare.ReuseWith` names a fresh X25519MLKEM768 source for an X25519
+  fallback. Zero retains independent generation and consumes no extra random
+  input. The engine links both public values to the same live private key,
+  handles either wire order, and rejects captured, missing, duplicate or
+  recursive sources. The selector is data supplied by the owning profile,
+  never a browser-name branch. No captured key or cross-connection key is
+  replayed. The public extension JSON decoder preserves `reuse_with`.
+  `u_keyshare_reuse_test.go` checks default independence, both orders, invalid
+  inputs, RNG failure and real standard-library peer handshakes, resumption
+  and P-256 HRR; `u_keyshare_reuse_witness_test.go` is the unchanged before/after
+  relationship oracle. Native Go QUIC exports establish the need for this
+  capability; this is not a new Chrome/platform fidelity verdict.
+
 - **Bounded content-coding policy for the unpublished engine 1**:
   `http.max_content_codings`, `http.content_coding_overflow` and
   `http.ignored_content_codings` are typed JSON choices. The decoder-chain
