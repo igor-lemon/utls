@@ -449,3 +449,12 @@ GREASE slots, including an explicitly empty second payload. The per-connection
 GREASE ID draws and collision handling are unchanged. Callers without the
 presence flag retain the legacy second-slot `00` payload. This generic
 mechanism does not select browser data or establish browser equivalence.
+
+## A13 legacy H3 settings capability
+
+The existing `h3.settings` primitive accepts implemented extended CONNECT
+booleans and the draft-08 datagram codepoint `0xffd277`. The HTTP/3 engine must
+negotiate the common advertised datagram version and use its wire error code.
+Historical WebTransport setting `0x2b603742` is accepted only at zero: enabling
+its unavailable state machine is still rejected. Unknown APIs, duplicates,
+invalid booleans and resource bounds remain strict. No browser defaults added.
