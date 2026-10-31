@@ -37,6 +37,15 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 
 ## Patches
 
+- **Explicit QUIC transport and layout policies (A13, pending engine1)**:
+  separate initial/max receive windows, keepalive and bounded session capacities;
+  explicit TCP-adapter versus independent QUIC TLS source; full supported TP slot
+  order and bounded byte-modulo GREASE length selection. Unknown, incomplete,
+  conflicting, sentinel-zero and unsupported choices fail validation. Initial ACK
+  packet and new-gap thresholds and ACK algorithm selections are explicit too.
+  No browser defaults are added.
+
+
 - **Strict selected policy JSON (A13, pending engine1)**: SETTINGS objects
   require exact explicit non-null `id` and `value`; case-folded, missing,
   duplicate and trailing-value representations cannot invent zero choices.
