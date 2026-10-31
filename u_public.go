@@ -961,3 +961,7 @@ func (ksp *keySharePrivateKeys) ToPublic() *KeySharePrivateKeys {
 		MlkemEcdhe: ksp.mlkemEcdhe,
 	}
 }
+
+// AESGCMHardwareSupport reports the crypto backend's current hardware capability,
+// including Go CPU feature overrides. It selects no cipher suites or wire values.
+func AESGCMHardwareSupport() bool { return hasAESGCMHardwareSupport }
