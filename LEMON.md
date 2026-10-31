@@ -441,3 +441,11 @@ TLS1.2/TLS1.3 each retain matching-name, post-handshake wrong-name and
 InsecureSkipVerify rejection, and add a typed wrong-name handshake control.
 No DNS/public endpoint or external-network skip remains. Production code and
 profile policy are unchanged; original denied-network failure is retained.
+
+## Explicit GREASE extension payloads (pending engine 1 / A13)
+
+`UtlsGREASEExtension.BodySet` preserves profile-owned `Body` bytes in both
+GREASE slots, including an explicitly empty second payload. The per-connection
+GREASE ID draws and collision handling are unchanged. Callers without the
+presence flag retain the legacy second-slot `00` payload. This generic
+mechanism does not select browser data or establish browser equivalence.

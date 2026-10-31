@@ -998,6 +998,9 @@ const ssl_grease_last_index = ssl_grease_ticket_extension
 type UtlsGREASEExtension struct {
 	Value uint16
 	Body  []byte // in Chrome first grease has empty body, second grease has a single zero byte
+	// BodySet preserves the explicitly selected payload, including an empty one.
+	// Without it, the legacy second-slot payload remains a single zero byte.
+	BodySet bool
 }
 
 func (e *UtlsGREASEExtension) writeToUConn(uc *UConn) error {
