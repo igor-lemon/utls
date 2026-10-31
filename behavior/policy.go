@@ -599,15 +599,23 @@ func (p Policy) Validate() error {
 					break
 				}
 				seen[x.ID] = true
-				if !slices.Contains([]uint64{1, 6, 7, 51}, x.ID) && !(x.ID >= 33 && (x.ID-33)%31 == 0) {
+				if !slices.Contains([]uint64{1, 6, 7, 8, 51, 16765559, 727725890}, x.ID) && !(x.ID >= 33 && (x.ID-33)%31 == 0) {
 					err = fmt.Errorf("HTTP3 setting capability API is unavailable: %d", x.ID)
 					break
 				}
-				if x.ID == 51 && x.Value > 1 {
-					err = fmt.Errorf("invalid H3_DATAGRAM boolean")
+				// Standard and draft-08 datagrams share a codec; the HTTP/3
+				// engine negotiates the intersection of explicitly advertised IDs.
+				if (x.ID == 8 || x.ID == 51 || x.ID == 16765559) && x.Value > 1 {
+					err = fmt.Errorf("invalid HTTP3 feature boolean")
 					break
 				}
 
+				// A declared zero disables this historical WebTransport draft;
+				// enabling its unavailable state machine must still fail.
+				if x.ID == 727725890 && x.Value != 0 {
+					err = fmt.Errorf("WebTransport capability API is unavailable")
+					break
+				}
 				if (x.ID == 1 && x.Value > 1<<20) || (x.ID == 7 && x.Value > 1024) {
 					err = fmt.Errorf("QPACK exceeds engine resource safety bound")
 					break
