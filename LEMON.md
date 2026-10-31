@@ -458,3 +458,8 @@ negotiate the common advertised datagram version and use its wire error code.
 Historical WebTransport setting `0x2b603742` is accepted only at zero: enabling
 its unavailable state machine is still rejected. Unknown APIs, duplicates,
 invalid booleans and resource bounds remain strict. No browser defaults added.
+
+Draft-08 enablement additionally requires the explicit
+`h3.datagram_setting_error_reason` template (`{id}`, `{value}`, max1024bytes).
+Unknown/malformed/null templates are rejected; frozen migration files retain
+exact bytes. The owner catalogue supplies the new choice explicitly.

@@ -265,6 +265,7 @@ var supported = map[string]spec{
 	"h3.alps_errors":                               {kind: "templates", max: 1024, holes: alpsErrors},
 	"h3.peer_settings":                             {kind: "text", choices: []string{"quiche"}},
 	"h3.settings_close_space":                      {kind: "text", choices: []string{"transport", "application"}},
+	"h3.datagram_setting_error_reason":             {kind: "template", max: 1024, holes: map[string][]string{"": {"id", "value"}}},
 	"h3.settings_close_code":                       {kind: "number", max: 1<<62 - 1},
 	"h3.settings_errors":                           {kind: "templates", max: 1024, holes: settingsErrors},
 	"h3.settings_http2":                            {kind: "numbers"},
@@ -612,6 +613,10 @@ func (p Policy) Validate() error {
 
 				// A declared zero disables this historical WebTransport draft;
 				// enabling its unavailable state machine must still fail.
+				if x.ID == 16765559 && x.Value == 1 && !p.Has("h3.datagram_setting_error_reason") {
+					err = fmt.Errorf("draft-08 datagrams require h3.datagram_setting_error_reason")
+					break
+				}
 				if x.ID == 727725890 && x.Value != 0 {
 					err = fmt.Errorf("WebTransport capability API is unavailable")
 					break
