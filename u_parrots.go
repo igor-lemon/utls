@@ -3429,7 +3429,9 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 				ext.Value = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_extension1)
 			case 1:
 				ext.Value = GetBoringGREASEValue(uconn.greaseSeed, ssl_grease_extension2)
-				ext.Body = []byte{0}
+				if !ext.BodySet {
+					ext.Body = []byte{0}
+				}
 			default:
 				return errors.New("at most 2 grease extensions are supported")
 			}
