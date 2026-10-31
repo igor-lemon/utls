@@ -37,6 +37,19 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 
 ## Patches
 
+- **Strict selected policy JSON (A13, pending engine1)**: SETTINGS objects
+  require exact explicit non-null `id` and `value`; case-folded, missing,
+  duplicate and trailing-value representations cannot invent zero choices.
+  The shared policy boundary also rejects invalid UTF-8, nested nulls and
+  repeated object keys instead of accepting replacement/empty/last values.
+  Existing typed diagnostics are retained; explicit zero, empty text, empty
+  SETTINGS and literal text "null" stay distinct and supported. Scalar checks
+  avoid token allocation after typed validation. The same boundary serves
+  every transport; it is not a root-only workaround. Original nine invalid
+  acceptances and the existing duplicate-template rejection are retained by
+  `behavior/structured_json_witness_test.go`; positive/negative controls are
+  in `behavior/structured_json_test.go`. No browser default changes here.
+
 - **Explicit fresh hybrid/X25519 key reuse (A13, pending engine1)**:
   `KeyShare.ReuseWith` names a fresh X25519MLKEM768 source for an X25519
   fallback. Zero retains independent generation and consumes no extra random

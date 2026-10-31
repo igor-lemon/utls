@@ -590,9 +590,7 @@ func (p Policy) Validate() error {
 			}
 		case "settings":
 			var v []Setting
-			d := json.NewDecoder(bytes.NewReader(raw))
-			d.DisallowUnknownFields()
-			err = d.Decode(&v)
+			v, err = decodeSettings(raw)
 			seen := map[uint64]bool{}
 			for _, x := range v {
 				if x.ID >= 1<<62 || x.Value >= 1<<62 || seen[x.ID] {
@@ -626,6 +624,9 @@ func (p Policy) Validate() error {
 					break
 				}
 			}
+		}
+		if err == nil {
+			err = validateJSONChoices(raw)
 		}
 		if err != nil {
 			return fmt.Errorf("behavior %s: %w", k, err)
