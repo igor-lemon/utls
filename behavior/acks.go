@@ -24,6 +24,21 @@ var ackOnly = []string{"quic.ack_only_max", "quic.ack_only_frame"}
 // ACK-only packets their count and their frame together, and an ACK alarm's
 // slack as a part of its delay is a part of a slack said.
 func validateQUICAcks(p Policy) error {
+	if p.Has("quic.ack_gap_policy") {
+		bounded := p.Text("quic.ack_gap_policy") == "bounded-gap"
+		if bounded != p.Has("quic.ack_gap_packets") {
+			return fmt.Errorf("bounded-gap requires quic.ack_gap_packets; new-gap must not declare it")
+		}
+	}
+	if p.Has("quic.ack_decimation") {
+		threshold := p.Text("quic.ack_decimation") == "threshold"
+		for _, key := range ackDecimation {
+			if threshold != p.Has(key) {
+				return fmt.Errorf("threshold ACK decimation requires its parameters; none must not declare %s", key)
+			}
+		}
+	}
+
 	for _, set := range [][]string{ackDecimation, ackOnly} {
 		for _, k := range set {
 			for _, other := range set {

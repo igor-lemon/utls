@@ -304,6 +304,22 @@ var supported = map[string]spec{
 	"h2.hpack_indexed_exceptions":                  {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
 	"h2.hpack_first_static_name":                   {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"h2.hpack_index_oversized":                     {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
+	"quic.parameter_order":                         {kind: "texts"},
+	"quic.grease_parameter_length_rule":            {kind: "text", choices: []string{"byte-modulo"}},
+	"quic.grease_parameter_length_min":             {kind: "number", max: 16},
+	"quic.grease_parameter_length_max":             {kind: "number", max: 16},
+	"quic.tls_source":                              {kind: "text", choices: []string{"tcp-adapter", "independent"}},
+	"quic.session_cache":                           {kind: "boolean"},
+	"quic.ack_initial_packets":                     {kind: "number", min: 1, max: 65535},
+	"quic.ack_reordering_threshold":                {kind: "number", min: 1, max: 255},
+	"quic.ack_gap_policy":                          {kind: "text", choices: []string{"new-gap", "bounded-gap"}},
+	"quic.ack_decimation":                          {kind: "text", choices: []string{"none", "threshold"}},
+	"quic.config":                                  {kind: "text", choices: []string{"explicit"}},
+	"quic.max_stream_receive_window":               {kind: "number", min: 1, max: 4294967295},
+	"quic.max_connection_receive_window":           {kind: "number", min: 1, max: 4294967295},
+	"quic.keep_alive_ms":                           {kind: "number", max: 4294967295},
+	"tls.session_cache_entries":                    {kind: "number", min: 1, max: 65536},
+	"quic.session_cache_entries":                   {kind: "number", min: 1, max: 65536},
 	"quic.enabled":                                 {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"quic.dedicated_socket":                        {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"quic.source_cid_bytes":                        {kind: "number", min: 0, max: 20, choices: []string{}},
@@ -743,7 +759,7 @@ func (p Policy) Validate() error {
 	if p.Has("headers.renderer_initial_buckets") && p.Uint("headers.renderer_initial_buckets") > 1<<20 {
 		return fmt.Errorf("renderer map exceeds engine memory bound")
 	}
-	if p.Flag("quic.enabled") && !p.Flag("quic.dedicated_socket") {
+	if p.Flag("quic.enabled") && !p.Flag("quic.dedicated_socket") && !p.Has("quic.config") {
 		return fmt.Errorf("shared profile QUIC socket API is unavailable")
 	}
 	for _, k := range []string{"quic.stream_receive_window", "quic.connection_receive_window", "quic.initial_packet_bytes", "quic.max_udp_payload", "quic.active_cid_limit", "quic.ack_timer_ms", "quic.max_ack_delay_ms", "quic.incoming_uni_streams"} {
@@ -984,6 +1000,12 @@ func (p Policy) Validate() error {
 		return err
 	}
 	if err := validateAltSvc(p); err != nil {
+		return err
+	}
+	if err := validateQUICParameterLayout(p); err != nil {
+		return err
+	}
+	if err := validateQUICConfig(p); err != nil {
 		return err
 	}
 	if err := validateQUICHandshake(p); err != nil {
