@@ -3797,6 +3797,10 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 			uconn.HandshakeState.State13.KeyShareKeys.Keys = make(map[CurveID]*ecdh.PrivateKey)
 			// [FIX END]
 
+			reuseKeys, err := keyShareReuseKeys(ext.KeyShares, uconn.config.rand())
+			if err != nil {
+				return err
+			}
 			for i := range ext.KeyShares {
 				curveID := ext.KeyShares[i].Group
 				if isGREASEUint16(uint16(curveID)) { // just in case the user set a GREASE value instead of unGREASEd
@@ -3810,7 +3814,7 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 				isHybridReuse := len(ext.KeyShares[i].Data) == 1 && ext.KeyShares[i].Data[0] == keyShareHybridReuseMarker
 				isClassicalReuse := len(ext.KeyShares[i].Data) == 1 && ext.KeyShares[i].Data[0] == keyShareClassicalReuseMarker
 				if curveID == MLKEM1024 {
-					if isHybridReuse || isClassicalReuse {
+					if isHybridReuse || isClassicalReuse || ext.KeyShares[i].ReuseWith != 0 {
 						return errors.New("keyshare reuse is not supported for MLKEM1024")
 					}
 					mlkemKey, err := mlkem.GenerateKey1024()
@@ -3830,9 +3834,15 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 						}
 					}
 
-					ecdheKey, err := generateECDHEKey(uconn.config.rand(), X25519)
-					if err != nil {
-						return err
+					// A share linked by ReuseWith takes the X25519 component
+					// keyShareReuseKeys made fresh for it; any other is its own.
+					ecdheKey := reuseKeys[curveID]
+					if ecdheKey == nil {
+						var err error
+						ecdheKey, err = generateECDHEKey(uconn.config.rand(), X25519)
+						if err != nil {
+							return err
+						}
 					}
 					seed := make([]byte, mlkem.SeedSize)
 					if _, err := io.ReadFull(uconn.config.rand(), seed); err != nil {
@@ -3882,10 +3892,14 @@ func (uconn *UConn) ApplyPreset(p *ClientHelloSpec) error {
 						continue
 					}
 
-					ecdheKey, err := generateECDHEKey(uconn.config.rand(), curveID)
-					if err != nil {
-						return fmt.Errorf("unsupported Curve in KeyShareExtension: %v."+
-							"To mimic it, fill the Data(key) field manually", curveID)
+					ecdheKey := reuseKeys[ext.KeyShares[i].ReuseWith]
+					if ecdheKey == nil {
+						var err error
+						ecdheKey, err = generateECDHEKey(uconn.config.rand(), curveID)
+						if err != nil {
+							return fmt.Errorf("unsupported Curve in KeyShareExtension: %v."+
+								"To mimic it, fill the Data(key) field manually", curveID)
+						}
 					}
 
 					// [FIX START] Always store the key in the map

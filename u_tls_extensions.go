@@ -5,6 +5,7 @@
 package tls
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1344,8 +1345,9 @@ func (e *KeyShareExtension) writeToUConn(uc *UConn) error {
 func (e *KeyShareExtension) UnmarshalJSON(b []byte) error {
 	var keyShareClientHello struct {
 		ClientShares []struct {
-			Group       string  `json:"group"`
-			KeyExchange []uint8 `json:"key_exchange"`
+			Group       string          `json:"group"`
+			KeyExchange []uint8         `json:"key_exchange"`
+			ReuseWith   json.RawMessage `json:"reuse_with,omitempty"`
 		} `json:"client_shares"`
 	}
 	if err := json.Unmarshal(b, &keyShareClientHello); err != nil {
@@ -1353,18 +1355,29 @@ func (e *KeyShareExtension) UnmarshalJSON(b []byte) error {
 	}
 
 	for _, clientShare := range keyShareClientHello.ClientShares {
+		var reuseWith CurveID
+		if len(clientShare.ReuseWith) != 0 {
+			if bytes.Equal(bytes.TrimSpace(clientShare.ReuseWith), []byte("null")) {
+				return fmt.Errorf("key share reuse_with must not be null")
+			}
+			if err := json.Unmarshal(clientShare.ReuseWith, &reuseWith); err != nil {
+				return err
+			}
+		}
 		if clientShare.Group == "GREASE" {
 			e.KeyShares = append(e.KeyShares, KeyShare{
-				Group: GREASE_PLACEHOLDER,
-				Data:  clientShare.KeyExchange,
+				Group:     GREASE_PLACEHOLDER,
+				Data:      clientShare.KeyExchange,
+				ReuseWith: reuseWith,
 			})
 			continue
 		}
 
 		if groupID, ok := dicttls.DictSupportedGroupsNameIndexed[clientShare.Group]; ok {
 			ks := KeyShare{
-				Group: CurveID(groupID),
-				Data:  clientShare.KeyExchange,
+				Group:     CurveID(groupID),
+				Data:      clientShare.KeyExchange,
+				ReuseWith: reuseWith,
 			}
 			e.KeyShares = append(e.KeyShares, ks)
 		} else {
