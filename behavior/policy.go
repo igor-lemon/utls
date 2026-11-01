@@ -416,6 +416,7 @@ var supported = map[string]spec{
 	"cache.entry_bytes":                            {kind: "number", min: 1, max: 2147483647, choices: []string{}},
 	"cache.total_bytes":                            {kind: "number", min: 1, max: 2147483647, choices: []string{}},
 	"cache.entries":                                {kind: "number", min: 1, max: 2147483647, choices: []string{}},
+	"headers.network_hints":                        {kind: "text", min: 0, max: 4294967295, choices: []string{"none", "literal", "weighted-observations"}},
 	"headers.client_hint_order":                    {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
 	"headers.default_client_hints":                 {kind: "texts", min: 0, max: 4294967295, choices: []string{}},
 	"headers.renderer_hint_insertion_order":        {kind: "texts", min: 0, max: 4294967295, choices: []string{}},

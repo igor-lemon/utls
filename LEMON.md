@@ -506,3 +506,7 @@ Draft-08 enablement additionally requires the explicit
 `h3.datagram_setting_error_reason` template (`{id}`, `{value}`, max1024bytes).
 Unknown/malformed/null templates are rejected; frozen migration files retain
 exact bytes. The owner catalogue supplies the new choice explicitly.
+
+## A13 network-hint capability declaration
+
+`headers.network_hints` declares `none`, `literal` or `weighted-observations`. The project owns the typed policy and execution. Earlier engine snapshots reject this unknown mandatory selector; frozen migration templates receive no hidden default. This registry addition does not claim browser acceptance.
