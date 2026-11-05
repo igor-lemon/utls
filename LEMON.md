@@ -510,3 +510,34 @@ exact bytes. The owner catalogue supplies the new choice explicitly.
 ## A13 network-hint capability declaration
 
 `headers.network_hints` declares `none`, `literal` or `weighted-observations`. The project owns the typed policy and execution. Earlier engine snapshots reject this unknown mandatory selector; frozen migration templates receive no hidden default. This registry addition does not claim browser acceptance.
+
+## Pending engine1 release: ECH configs a profile cannot use
+
+A record's ECHConfigList that reads but has no config the profile can use (a
+KEM, KDF or AEAD the policy does not name, another ECHConfig version, a
+mandatory extension, a public name that is no DNS name) failed the connection
+before its ClientHello (`contains no config the profile can use`). Chrome sends
+its hello as with no list, with GREASE ECH: BoringSSL's `ssl_select_ech_config`
+picks none, and `ssl_encrypt_client_hello` then sends GREASE (revision
+2ea3200c, Chrome 156's); Chromium's `ConfigureEch` sets
+`reject_unusable_ech_config` only in strict mode. Measured on Chrome
+156.0.8078.80 (tls-forge's ledger, TLS-014, baseline
+`review-20261105-ech-unusable`).
+
+- `MarshalClientHello`: `startSpecECH` says `errNoUsableECHConfig`, and
+  `withoutECHConfigs` gives the connection a copy of its config with no list,
+  so that the rest of the handshake is one of no list: TLS 1.2 offered, the
+  certificate checked against the server's name with `VerifyConnection` and
+  `VerifyPeerCertificate`, a session resumed in the hello itself, the GREASE
+  the same after a HelloRetryRequest. The caller's config keeps its list.
+- `specECHConfigs` reads a list as BoringSSL's `ssl_is_valid_ech_config_list`
+  does and fails one that does not read, as Chrome's
+  `ERR_INVALID_ECH_CONFIG_LIST`: Go's `parseECHConfigList` takes an empty list
+  and configs with no key, cipher suite or public name, or with more in them
+  than their fields, and refuses a list whose config of another version, or
+  of a public name that is no DNS name, BoringSSL passes over unread.
+
+Tests in `u_ech_spec_test.go`: `TestAListWithNoConfigTheProfileCanUseSendsGREASEAsChrome`,
+`TestAHelloOfNoConfigTheProfileCanUseGoesOnAsOneOfNoList`,
+`TestAListThatDoesNotReadSendsNothing` (15 mutants, all killed). No JSON value
+or browser branch is added; this is the same unpublished engine1.

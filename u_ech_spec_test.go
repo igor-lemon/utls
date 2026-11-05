@@ -911,15 +911,201 @@ func TestAnOfferToAServerOfTLS12IsRefused(t *testing.T) {
 	}
 }
 
-func TestAnOfferNeedsAConfigTheProfileCanUse(t *testing.T) {
+// echContents are the contents of an ECHConfig of version 0xfe0d: its fields
+// as given, with more after them.
+func echContents(kem uint16, key, suites []byte, name string, exts []byte, more ...byte) []byte {
+	b := cryptobyte.NewBuilder(nil)
+	b.AddUint8(0x22)
+	b.AddUint16(kem)
+	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) { b.AddBytes(key) })
+	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) { b.AddBytes(suites) })
+	b.AddUint8(0)
+	b.AddUint8LengthPrefixed(func(b *cryptobyte.Builder) { b.AddBytes([]byte(name)) })
+	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) { b.AddBytes(exts) })
+	b.AddBytes(more)
+	return b.BytesOrPanic()
+}
+
+// rawECHConfig is an ECHConfig of version with contents.
+func rawECHConfig(version uint16, contents []byte) []byte {
+	b := cryptobyte.NewBuilder(nil)
+	b.AddUint16(version)
+	b.AddUint16LengthPrefixed(func(b *cryptobyte.Builder) { b.AddBytes(contents) })
+	return b.BytesOrPanic()
+}
+
+// unusableLists are lists that read, as BoringSSL reads them, with no config
+// Chrome's policy can use.
+func unusableLists(t testing.TB, s *echTestServer) []struct {
+	name string
+	list []byte
+} {
+	t.Helper()
+	key := s.key.PublicKey().Bytes()
+	config := func(kem uint16, key, suites []byte, name string, exts []byte) []byte {
+		return rawECHConfig(extensionEncryptedClientHello, echContents(kem, key, suites, name, exts))
+	}
+	aes := []byte{0, 1, 0, 1}
+	return []struct {
+		name string
+		list []byte
+	}{
+		{"a KDF the profile does not name", listOf(config(0x20, key, []byte{0, 2, 0, 1}, "public.example", nil))},
+		{"an AEAD the profile does not name", listOf(config(0x20, key, []byte{0, 1, 0xff, 0xff}, "public.example", nil))},
+		{"a KEM the profile does not name", listOf(config(0x10, make([]byte, 65), aes, "public.example", nil))},
+		{"a version to come", listOf(rawECHConfig(0xfe0e, []byte{1, 2, 3}))},
+		{"an extension it must know", listOf(config(0x20, key, aes, "public.example", []byte{0x80, 1, 0, 0}))},
+		{"a public name that is an address", listOf(config(0x20, key, aes, "192.0.2.1", nil))},
+		{"an address, its extensions unread", listOf(config(0x20, key, aes, "192.0.2.1", []byte{0x80}))},
+		{"one of each", listOf(rawECHConfig(0xfe0e, nil), config(0x10, make([]byte, 65), aes, "public.example", nil),
+			config(0x20, key, aes, "public.example", []byte{0x80, 1, 0, 0}))},
+	}
+}
+
+// extensionsOf is a hello's extensions by type, in its order.
+func extensionsOf(t testing.TB, raw []byte) []uint16 {
+	t.Helper()
+	hello := new(clientHelloMsg)
+	if !hello.unmarshal(raw) {
+		t.Fatal("hello does not read")
+	}
+	exts, err := extractRawExtensions(hello)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []uint16
+	for _, e := range exts {
+		ids = append(ids, e.extType)
+	}
+	return ids
+}
+
+// sameOrGREASE says whether two extension types are one, or both GREASE,
+// which each connection draws.
+func sameOrGREASE(a, b uint16) bool { return a == b || isGREASEUint16(a) && isGREASEUint16(b) }
+
+// greaseOf is what a hello's encrypted_client_hello holds: its key and
+// payload, or why it holds none.
+func greaseOf(t testing.TB, raw []byte) (enc []byte, payload int, err error) {
+	t.Helper()
+	hello := new(clientHelloMsg)
+	if !hello.unmarshal(raw) {
+		t.Fatal("hello does not read")
+	}
+	typ, _, _, enc, p, err := parseECHExt(hello.encryptedClientHello)
+	if err == nil && typ != outerECHExt {
+		err = errors.New("not an outer one")
+	}
+	return enc, len(p), err
+}
+
+// A list with no config the profile can use offers no ECH, as BoringSSL's
+// ssl_select_ech_config picks none of it and ssl_encrypt_client_hello sends
+// GREASE: the hello is the one of no list, to the server's own name, whose
+// certificate is checked as a connection's that offered no ECH.
+func TestAListWithNoConfigTheProfileCanUseSendsGREASEAsChrome(t *testing.T) {
 	s := newECHTestServer(t)
-	for _, list := range [][]byte{
-		listOf(echConfigFor(1, s.key.PublicKey().Bytes(), [][2]uint16{{2, 1}}, 0)),
-		{0, 1},
+	plain := s.handshake(t, nil, s.serverConfig(true), nil)
+	if plain.clientErr != nil || len(plain.hellos) != 1 {
+		t.Fatalf("no list: %v, %d hellos", plain.clientErr, len(plain.hellos))
+	}
+	_, greased, err := greaseOf(t, plain.hellos[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range unusableLists(t, s) {
+		var given *Config
+		verified := 0
+		run := s.handshakeWith(t, s.serverConfig(true), nil, func(c *Config) {
+			c.EncryptedClientHelloConfigList = tc.list
+			c.VerifyConnection = func(ConnectionState) error { verified++; return nil }
+			given = c
+		}, nil, nil)
+		if run.clientErr != nil || run.serverErr != nil || len(run.hellos) != 1 {
+			t.Errorf("%s: client %v, server %v, %d hellos", tc.name, run.clientErr, run.serverErr, len(run.hellos))
+			continue
+		}
+		if run.client.ECHAccepted || run.server.ECHAccepted || run.server.ServerName != "secret.example" ||
+			run.client.ServerName != "secret.example" || len(run.client.VerifiedChains) != 1 || verified != 1 {
+			t.Errorf("%s: client %+v, server %+v, verified %d", tc.name, run.client, run.server, verified)
+		}
+		if !bytes.Equal(given.EncryptedClientHelloConfigList, tc.list) {
+			t.Errorf("%s: the caller's list became %x", tc.name, given.EncryptedClientHelloConfigList)
+		}
+		if got, want := extensionsOf(t, run.hellos[0]), extensionsOf(t, plain.hellos[0]); !slices.EqualFunc(got, want, sameOrGREASE) {
+			t.Errorf("%s: extensions %v, with no list %v", tc.name, got, want)
+		}
+		if enc, payload, err := greaseOf(t, run.hellos[0]); err != nil || len(enc) != 32 || payload != greased {
+			t.Errorf("%s: GREASE of %d and %d bytes (%v), want 32 and %d", tc.name, len(enc), payload, err, greased)
+		}
+	}
+}
+
+// Such a hello goes on as one of no list does: to a server of TLS 1.2, after
+// a HelloRetryRequest (its GREASE the same in the second hello, as
+// BoringSSL's ech_client_outer is), and resuming its session in the hello
+// itself.
+func TestAHelloOfNoConfigTheProfileCanUseGoesOnAsOneOfNoList(t *testing.T) {
+	s := newECHTestServer(t)
+	list := unusableLists(t, s)[0].list
+	cfg := s.serverConfig(true)
+	cfg.MaxVersion = stdtls.VersionTLS12
+	if run := s.handshake(t, list, cfg, nil); run.clientErr != nil || run.client.Version != VersionTLS12 {
+		t.Errorf("TLS 1.2: %v, version %x", run.clientErr, run.client.Version)
+	}
+	run := s.handshake(t, list, s.serverConfig(true, stdtls.CurveP256), nil)
+	if run.clientErr != nil || len(run.hellos) != 2 {
+		t.Fatalf("retried: %v, %d hellos", run.clientErr, len(run.hellos))
+	}
+	first, second := new(clientHelloMsg), new(clientHelloMsg)
+	if !first.unmarshal(run.hellos[0]) || !second.unmarshal(run.hellos[1]) ||
+		!bytes.Equal(first.encryptedClientHello, second.encryptedClientHello) || len(first.encryptedClientHello) == 0 {
+		t.Errorf("GREASE %x, then %x", first.encryptedClientHello, second.encryptedClientHello)
+	}
+	cache, server := NewLRUClientSessionCache(4), s.serverConfig(true)
+	if run := s.handshake(t, list, server, cache); run.clientErr != nil || run.client.DidResume {
+		t.Fatalf("first: %v, resumed %v", run.clientErr, run.client.DidResume)
+	}
+	again := s.handshake(t, list, server, cache)
+	hello := new(clientHelloMsg)
+	if again.clientErr != nil || !again.client.DidResume || len(again.hellos) != 1 || !hello.unmarshal(again.hellos[0]) ||
+		len(hello.pskIdentities) != 1 {
+		t.Errorf("resumed: %v, %v, %d hellos", again.clientErr, again.client.DidResume, len(again.hellos))
+	}
+}
+
+// A list that does not read as BoringSSL reads it ends the connection before
+// anything is sent, as Chrome's ERR_INVALID_ECH_CONFIG_LIST does, though Go's
+// parser takes some of them.
+func TestAListThatDoesNotReadSendsNothing(t *testing.T) {
+	s := newECHTestServer(t)
+	key := s.key.PublicKey().Bytes()
+	aes := []byte{0, 1, 0, 1}
+	good := rawECHConfig(extensionEncryptedClientHello, echContents(0x20, key, aes, "public.example", nil))
+	config := func(contents []byte) []byte {
+		return listOf(rawECHConfig(extensionEncryptedClientHello, contents))
+	}
+	for _, tc := range []struct {
+		name string
+		list []byte
+	}{
+		{"a length alone", []byte{0, 1}},
+		{"an empty list", []byte{0, 0}},
+		{"more after the list", append(listOf(good), 0)},
+		{"a config cut short", listOf(good[:len(good)-1])},
+		{"a config's length cut short", listOf([]byte{0xfe, 0x0d, 0})},
+		{"no key", config(echContents(0x20, nil, aes, "public.example", nil))},
+		{"no cipher suite", config(echContents(0x20, key, nil, "public.example", nil))},
+		{"a cipher suite cut short", config(echContents(0x20, key, []byte{0, 1, 0, 1, 0, 1}, "public.example", nil))},
+		{"no public name", config(echContents(0x20, key, aes, "", nil))},
+		{"extensions that do not read", config(echContents(0x20, key, aes, "public.example", []byte{0x80}))},
+		{"more after its fields", config(echContents(0x20, key, aes, "public.example", nil, 0))},
+		{"fields cut short", config([]byte{0x22, 0, 0x20})},
+		{"a good config, then a bad one", listOf(good, rawECHConfig(extensionEncryptedClientHello, nil))},
 	} {
-		run := s.handshake(t, list, s.serverConfig(true), nil)
-		if run.clientErr == nil || len(run.hellos) != 0 {
-			t.Errorf("%x: %v, %d hellos", list, run.clientErr, len(run.hellos))
+		run := s.handshake(t, tc.list, s.serverConfig(true), nil)
+		if !errors.Is(run.clientErr, errMalformedECHConfigList) || len(run.hellos) != 0 {
+			t.Errorf("%s: %v, %d hellos", tc.name, run.clientErr, len(run.hellos))
 		}
 	}
 }

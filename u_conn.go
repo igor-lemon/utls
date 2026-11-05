@@ -568,7 +568,12 @@ func (uconn *UConn) computeAndUpdateOuterECHExtension(inner *clientHelloMsg, ech
 
 func (uconn *UConn) MarshalClientHello() error {
 	if uconn.config.offersSpecECH() {
-		if err := uconn.startSpecECH(); err != nil {
+		err := uconn.startSpecECH()
+		if err == errNoUsableECHConfig {
+			uconn.withoutECHConfigs()
+			return uconn.MarshalClientHelloNoECH()
+		}
+		if err != nil {
 			return err
 		}
 		return uconn.sealSpecECH(uconn.echCtx.encapsulatedKey, nil)
