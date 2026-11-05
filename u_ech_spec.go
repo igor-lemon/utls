@@ -40,7 +40,10 @@ import (
 // The config is the first of the list whose KEM, KDF and AEAD the policy names
 // (tls.ech_kems, tls.ech_kdfs, tls.ech_aeads), and its cipher suite the first
 // of its own the policy names, but ChaCha20-Poly1305 where the machine has no
-// AES hardware and tls.ech_chacha_without_aes says so.
+// AES hardware and tls.ech_chacha_without_aes says so. A list that reads and
+// has no such config offers no ECH: the hello is the profile's, its GREASE
+// encrypted_client_hello and all. A list that does not read fails the
+// connection, as Chrome's ERR_INVALID_ECH_CONFIG_LIST does.
 
 // specECH is an ECH offer of a profile: how its inner hello is made of the
 // outer one, and what it is made for.
@@ -88,6 +91,60 @@ func pickSpecECHConfig(list []echConfig, p behavior.Policy) (*echConfig, echCiph
 	return nil, echCipher{}, false
 }
 
+// specECHConfigs are the configs of list a profile's offer may pick from,
+// and whether list reads as BoringSSL's ssl_is_valid_ech_config_list reads
+// it, which Chrome's SSL_set1_ech_config_list asks. Go's parseECHConfigList
+// takes more (an empty list, a config with no key, cipher suite or public
+// name, or with more in it than its fields) and less: as parse_ech_config
+// does, a config of another version is passed over unread, and so are the
+// extensions of one whose public name is no DNS name, which neither is one to
+// pick. Each config left is read by Go's parseECHConfig.
+func specECHConfigs(list []byte) ([]echConfig, bool) {
+	s := cryptobyte.String(list)
+	var all cryptobyte.String
+	if !s.ReadUint16LengthPrefixed(&all) || all.Empty() || !s.Empty() {
+		return nil, false
+	}
+	var configs []echConfig
+	for !all.Empty() {
+		raw := []byte(all)
+		var version uint16
+		var contents cryptobyte.String
+		if !all.ReadUint16(&version) || !all.ReadUint16LengthPrefixed(&contents) {
+			return nil, false
+		}
+		raw = raw[:len(raw)-len(all)]
+		if version != extensionEncryptedClientHello {
+			continue
+		}
+		var id, maxName uint8
+		var kem uint16
+		var key, suites, name, exts cryptobyte.String
+		if !contents.ReadUint8(&id) || !contents.ReadUint16(&kem) ||
+			!contents.ReadUint16LengthPrefixed(&key) || key.Empty() ||
+			!contents.ReadUint16LengthPrefixed(&suites) || suites.Empty() || len(suites)%4 != 0 ||
+			!contents.ReadUint8(&maxName) ||
+			!contents.ReadUint8LengthPrefixed(&name) || name.Empty() ||
+			!contents.ReadUint16LengthPrefixed(&exts) || !contents.Empty() {
+			return nil, false
+		}
+		if !echPublicName(string(name)) {
+			continue
+		}
+		for !exts.Empty() {
+			var typ uint16
+			var body cryptobyte.String
+			if !exts.ReadUint16(&typ) || !exts.ReadUint16LengthPrefixed(&body) {
+				return nil, false
+			}
+		}
+		// It reads no more than was read above, so it cannot fail.
+		_, config, _ := parseECHConfig(raw)
+		configs = append(configs, config)
+	}
+	return configs, true
+}
+
 // pickSpecECHCipherSuite is the first of suites whose KDF and AEAD the policy
 // names, or, where the machine has no AES hardware (aes) and
 // tls.ech_chacha_without_aes says so, ChaCha20-Poly1305 when it is one of
@@ -107,17 +164,35 @@ func pickSpecECHCipherSuite(suites []echCipher, p behavior.Policy, aes bool) (ec
 	return picked, found
 }
 
+// errNoUsableECHConfig is startSpecECH's word for a list that reads and has
+// no config the profile can use.
+var errNoUsableECHConfig = errors.New("tls: EncryptedClientHelloConfigList contains no config the profile can use")
+
+// withoutECHConfigs makes uconn's hello one of no configs: its config's own
+// copy has none, so that the handshake after it is one that offered no ECH,
+// whose server's certificate is checked against the server's own name. As
+// BoringSSL's ssl_select_ech_config picks no config of a list that reads but
+// has none it can use, and ssl_encrypt_client_hello then sends GREASE, as
+// Chrome does with no list, the profile's encrypted_client_hello is its
+// GREASE (Chrome 156: ConfigureEch in opportunistic mode, which is not
+// reject_unusable_ech_config's). The caller's config is left as it is.
+func (uconn *UConn) withoutECHConfigs() {
+	config := uconn.config.Clone()
+	config.EncryptedClientHelloConfigList = nil
+	uconn.config = config
+}
+
 // startSpecECH picks the config and suite uconn offers ECH with, sets up the
 // HPKE context, and says how its inner hello is made.
 func (uconn *UConn) startSpecECH() error {
 	p := uconn.config.Policy()
-	configs, err := parseECHConfigList(uconn.config.EncryptedClientHelloConfigList)
-	if err != nil {
-		return err
+	configs, ok := specECHConfigs(uconn.config.EncryptedClientHelloConfigList)
+	if !ok {
+		return errMalformedECHConfig
 	}
 	config, suite, ok := pickSpecECHConfig(configs, p)
 	if !ok {
-		return errors.New("tls: EncryptedClientHelloConfigList contains no config the profile can use")
+		return errNoUsableECHConfig
 	}
 	pk, err := hpke.ParseHPKEPublicKey(config.KemID, config.PublicKey)
 	if err != nil {
