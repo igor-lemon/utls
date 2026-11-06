@@ -37,6 +37,19 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 
 ## Patches
 
+- **ServerHello extensions held to BoringSSL's (review 2026-11-05, 1.3)**:
+  `tls.validate_server_hello_extensions` has `validateServerHello`
+  (u_chrome_policy.go, from `readHandshake` before the message is read)
+  refuse what BoringSSL 2ea3200c refuses: of TLS 1.3 all but
+  supported_versions, a key_share where shares were sent and pre_shared_key
+  where one was offered, each once; of a HelloRetryRequest all but cookie,
+  key_share, supported_versions and ECH's confirmation; of TLS 1.2 what the
+  client did not offer, GREASE and padding, and one twice (the malformed
+  alert, as BoringSSL's decode_error). The alerts are the profile's
+  unsolicited, duplicate and malformed ones. Go's reading passed over an
+  extension it did not know. `u_server_hello_test.go`: the table, the
+  alert on the wire, the registry's requirement; 20 mutants killed.
+
 - **Hardware cipher selection capability (A13, pending engine1)**:
   `AESGCMHardwareSupport` reports the crypto backend's CPU capability, including
   Go feature overrides. It selects no wire values: owner JSON supplies the cipher

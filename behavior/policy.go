@@ -275,6 +275,7 @@ var supported = map[string]spec{
 	"tls.ticket_age_quantum_ms":                    {kind: "number", min: 0, max: 4294967295, choices: []string{}},
 	"tls.defer_key_update":                         {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"tls.validate_encrypted_extensions":            {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
+	"tls.validate_server_hello_extensions":         {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"tls.preserve_sni_trailing_dot":                {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"tls.alpn_mismatch_alert":                      {kind: "number", min: 1, max: 255, choices: []string{}},
 	"tls.certificate_decode_alert":                 {kind: "number", min: 1, max: 255, choices: []string{}},
@@ -941,7 +942,7 @@ func (p Policy) Validate() error {
 		}
 	}
 
-	if p.Flag("tls.validate_encrypted_extensions") {
+	if p.Flag("tls.validate_encrypted_extensions") || p.Flag("tls.validate_server_hello_extensions") {
 		for _, k := range []string{"tls.unsolicited_extension_alert", "tls.duplicate_extension_alert", "tls.malformed_extension_alert"} {
 			if !p.Has(k) {
 				return fmt.Errorf("extension validation requires %s", k)
