@@ -161,6 +161,7 @@ var supported = map[string]spec{
 	"tls.trust_anchor_order":                       {kind: "text", max: 255, choices: []string{"legacy-auto", "captured", "sorted", "process-shuffle"}},
 	"h2.window_update_denominator":                 {kind: "number", max: 255, choices: nil},
 	"h3.body_copy_bytes":                           {kind: "number", min: 1, max: 1 << 24},
+	"h3.cookie_crumbs":                             {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"url.blocked_ports":                            {kind: "numbers", max: 1<<62 - 1},
 	"h3.grease_setting_n_min":                      {kind: "number", max: 1<<62 - 1},
 	"h3.grease_setting_n_max":                      {kind: "number", max: 1<<62 - 1},
