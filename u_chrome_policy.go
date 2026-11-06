@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 
 	"github.com/igor-lemon/utls/behavior"
 	"golang.org/x/crypto/cryptobyte"
@@ -115,11 +116,15 @@ func (c *Conn) validateServerExtensions(data []byte) error {
 // refuses knowing the version, in a record of it (TLS 1.2's for TLS 1.3): of
 // TLS 1.3 (tls13_client.cc, ssl_parse_extensions) supported_versions, a
 // key_share where the client sent shares and pre_shared_key where it offered
-// one, each once; of a HelloRetryRequest, cookie, key_share,
+// one, each once (with ECH, where the inner hello offered one: whether the
+// server accepted ECH, which BoringSSL knows by then, the handshake asks once
+// it knows, rejectedECHResumed); of a HelloRetryRequest, cookie, key_share,
 // supported_versions, and encrypted_client_hello where the client sent one;
 // of TLS 1.2 (ssl_scan_serverhello_tlsext) no extension twice, which
 // BoringSSL says is a list that does not decode, then each the client
-// offered that a TLS 1.2 server may answer (tls12ServerHello), and
+// offered that a TLS 1.2 server may answer (tls12ServerHello),
+// renegotiation_info offered by the cipher suite that signals it too
+// (RFC 5746, section 3.4: BoringSSL sends the extension, never it), and
 // compress_certificate, offered, as a list that does not decode. Another is
 // the profile's unsolicited extension alert, one twice in TLS 1.3 its
 // duplicate extension alert.
@@ -128,7 +133,37 @@ func (c *Conn) validateServerHello(data []byte) error {
 	if offered == nil {
 		return err
 	}
+	if slices.Contains(c.utls.sessionController.uconnRef.HandshakeState.Hello.CipherSuites, scsvRenegotiation) {
+		offered[ExtensionRenegotiationInfo] = true
+	}
 	return c.validateServerHelloOffered(offered, data)
+}
+
+// innerOffersPSK says whether the inner hello of an ECH offer resumes a
+// session. BoringSSL offers sessions in the inner hello alone, and takes a
+// ServerHello's pre_shared_key where the server accepted ECH
+// (tls13_client.cc, do_read_server_hello, its extensions the inner's).
+func (c *Conn) innerOffersPSK() bool {
+	if c.utls.sessionController == nil {
+		return false
+	}
+	ech := c.utls.sessionController.uconnRef.echCtx
+	return ech != nil && ech.innerHello != nil && len(ech.innerHello.pskIdentities) > 0
+}
+
+// rejectedECHResumed is the refusal of a ServerHello that resumed a session
+// of an ECH offer the server rejected, as BoringSSL refuses it: the outer
+// hello offers none, so its pre_shared_key is one the client did not offer
+// ("When offering ECH, pre-shared keys are only offered in ClientHelloInner").
+// Nil where tls.validate_server_hello_extensions does not say so, or the
+// ServerHello resumed nothing.
+func (c *Conn) rejectedECHResumed(serverHello *serverHelloMsg) error {
+	p := c.config.Policy()
+	if !p.Flag("tls.validate_server_hello_extensions") || !serverHello.selectedIdentityPresent {
+		return nil
+	}
+	c.sendAlert(alert(p.Uint("tls.unsolicited_extension_alert")))
+	return errors.New("tls: server resumed a session the outer ClientHello did not offer")
 }
 
 // tls12ServerHello are the extensions a TLS 1.2 ServerHello may carry where
@@ -214,7 +249,7 @@ func (c *Conn) validateServerHelloOffered(offered map[uint16]bool, data []byte) 
 		case id == ExtensionKeyShare:
 			return offered[id]
 		case id == ExtensionPreSharedKey:
-			return !retry && offered[id]
+			return !retry && (offered[id] || c.innerOffersPSK())
 		case id == ExtensionCookie:
 			return retry
 		case id == extensionEncryptedClientHello:

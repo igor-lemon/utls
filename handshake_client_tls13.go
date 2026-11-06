@@ -125,6 +125,11 @@ func (hs *clientHandshakeStateTLS13) handshake() error {
 			}
 		} else {
 			hs.echContext.echRejected = true
+			// [uTLS SECTION BEGIN]
+			if err := c.rejectedECHResumed(hs.serverHello); err != nil {
+				return err
+			}
+			// [uTLS SECTION END]
 		}
 	}
 
