@@ -106,6 +106,22 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   `u_server_hello_record_test.go` (17 cases, the record of each alert); 13
   mutants killed.
 
+  tls-forge's Chrome profiles, given the check, found two more. An ECH offer
+  resumes its session in the inner hello alone, and BoringSSL reads a
+  ServerHello's extensions as the inner's where the server accepted ECH
+  (do_read_server_hello sets `extensions.sent` to `inner_extensions_sent`
+  after check_ech_confirmation): the check read the outer's and refused
+  every resumed accepted ECH. Now pre_shared_key is taken where the inner
+  hello offered a session (`innerOffersPSK`), and where the server then
+  turns out to have rejected ECH it is unsupported_extension, as BoringSSL's
+  `pre_shared_key_allowed` says ("pre-shared keys are only offered in
+  ClientHelloInner"), once the handshake knows (`rejectedECHResumed`, in a
+  record of TLS 1.2); crypto/tls said illegal_parameter there. And a hello
+  that signals secure renegotiation by its SCSV alone (Python's, catalogue
+  ones) has a TLS 1.2 server answer renegotiation_info, as RFC 5746 (section
+  3.4) has it: the SCSV counts as offering it. BoringSSL never sends the SCSV.
+  `u_server_hello_ech_test.go`; 10 mutants killed.
+
 - **Hardware cipher selection capability (A13, pending engine1)**:
   `AESGCMHardwareSupport` reports the crypto backend's CPU capability, including
   Go feature overrides. It selects no wire values: owner JSON supplies the cipher
