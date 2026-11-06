@@ -71,6 +71,18 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   extension it did not know. `u_server_hello_test.go`: the table, the
   alert on the wire, the registry's requirement; 20 mutants killed.
 
+- **A session kept by the key its dialer gives (2026-11-06)**:
+  `Config.SessionCacheKey`, when set, is the key `clientSessionCacheKey`
+  keeps and looks sessions up by, in place of `ServerName`, and `Clone`
+  keeps it. Chromium keys its TLS sessions by host and port
+  (`SSLClientSessionCache::Key`, its `HostPortPair`, net/socket and net/ssl
+  of 156.0.8078.80) and quiche its QUIC ones by `QuicServerId`, so a ticket a
+  server gave on one port is offered on no other port of its name; Go keys
+  them by the server name alone. The registry has `tls.session_cache_key` and
+  `quic.session_cache_key` (`server-name` | `host-port`) for tls-client to
+  give the key by. `u_session_cache_key_test.go` (its key, another key of the
+  name, a clone, none).
+
 - **A refused ServerHello in BoringSSL's order and record (2026-11-06)**:
   tls-forge's wire test of the check above found its alert in a record of
   TLS 1.0, where Chrome's is in one of TLS 1.2: BoringSSL refuses the

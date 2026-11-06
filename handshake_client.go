@@ -1388,6 +1388,9 @@ func (c *Conn) getClientCertificate(cri *CertificateRequestInfo) (*Certificate, 
 // clientSessionCacheKey returns a key used to cache sessionTickets that could
 // be used to resume previously negotiated TLS sessions with a server.
 func (c *Conn) clientSessionCacheKey() string {
+	if c.config.SessionCacheKey != "" {
+		return c.config.SessionCacheKey
+	}
 	if len(c.config.ServerName) > 0 {
 		return c.config.ServerName
 	}

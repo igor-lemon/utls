@@ -326,6 +326,8 @@ var supported = map[string]spec{
 	"quic.session_cache_entries":                   {kind: "number", min: 1, max: 65536},
 	"tls.session_cache_sessions_per_entry":         {kind: "number", min: 1, max: 16},
 	"quic.session_cache_sessions_per_entry":        {kind: "number", min: 1, max: 16},
+	"tls.session_cache_key":                        {kind: "text", choices: []string{"server-name", "host-port"}},
+	"quic.session_cache_key":                       {kind: "text", choices: []string{"server-name", "host-port"}},
 	"quic.enabled":                                 {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"quic.dedicated_socket":                        {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"quic.source_cid_bytes":                        {kind: "number", min: 0, max: 20, choices: []string{}},
