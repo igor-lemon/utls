@@ -1808,11 +1808,34 @@ type lruSessionCache struct {
 	m        map[string]*list.Element
 	q        *list.List
 	capacity int
+	// perKey is how many sessions a key keeps: 1 but where
+	// NewLRUClientSessionCacheOf says more.
+	perKey int
 }
 
 type lruSessionCacheEntry struct {
 	sessionKey string
 	state      *ClientSessionState
+	// older are the single-use sessions put before state, newest first, that
+	// a key of more than one session keeps (perKey).
+	older []*ClientSessionState
+}
+
+// singleUse says a session is one a client resumes once: TLS 1.3's, as
+// BoringSSL's SSL_SESSION_should_be_single_use says.
+func singleUse(cs *ClientSessionState) bool {
+	return cs != nil && cs.session != nil && cs.session.version >= VersionTLS13
+}
+
+// push puts cs in an entry as Chromium's SSLClientSessionCache::Entry::Push
+// does: before the newest, which it keeps behind it when that one is single
+// use (perKey at most), else in its place.
+func (e *lruSessionCacheEntry) push(cs *ClientSessionState, perKey int) {
+	if singleUse(e.state) {
+		e.older = append([]*ClientSessionState{e.state}, e.older...)
+		e.older = e.older[:min(len(e.older), perKey-1)]
+	}
+	e.state = cs
 }
 
 // NewLRUClientSessionCache returns a [ClientSessionCache] with the given
@@ -1824,10 +1847,24 @@ func NewLRUClientSessionCache(capacity int) ClientSessionCache {
 	if capacity < 1 {
 		capacity = defaultSessionCacheCapacity
 	}
+	return NewLRUClientSessionCacheOf(capacity, 1)
+}
+
+// NewLRUClientSessionCacheOf is NewLRUClientSessionCache of keys that keep
+// perKey sessions each, as Chromium's SSLClientSessionCache keeps two: a
+// single-use session put where another is moves that one behind it, and
+// Take takes the newest. A perKey < 1 is 1.
+func NewLRUClientSessionCacheOf(capacity, perKey int) ClientSessionCache {
+	const defaultSessionCacheCapacity = 64
+
+	if capacity < 1 {
+		capacity = defaultSessionCacheCapacity
+	}
 	return &lruSessionCache{
 		m:        make(map[string]*list.Element),
 		q:        list.New(),
 		capacity: capacity,
+		perKey:   max(perKey, 1),
 	}
 }
 
@@ -1843,14 +1880,14 @@ func (c *lruSessionCache) Put(sessionKey string, cs *ClientSessionState) {
 			delete(c.m, sessionKey)
 		} else {
 			entry := elem.Value.(*lruSessionCacheEntry)
-			entry.state = cs
+			entry.push(cs, c.perKey)
 			c.q.MoveToFront(elem)
 		}
 		return
 	}
 
 	if c.q.Len() < c.capacity {
-		entry := &lruSessionCacheEntry{sessionKey, cs}
+		entry := &lruSessionCacheEntry{sessionKey: sessionKey, state: cs}
 		c.m[sessionKey] = c.q.PushFront(entry)
 		return
 	}
@@ -1859,7 +1896,7 @@ func (c *lruSessionCache) Put(sessionKey string, cs *ClientSessionState) {
 	entry := elem.Value.(*lruSessionCacheEntry)
 	delete(c.m, entry.sessionKey)
 	entry.sessionKey = sessionKey
-	entry.state = cs
+	entry.state, entry.older = cs, nil
 	c.q.MoveToFront(elem)
 	c.m[sessionKey] = elem
 }
@@ -2073,11 +2110,17 @@ func (c *lruSessionCache) Take(key string) (*ClientSessionState, bool) {
 	if !ok {
 		return nil, false
 	}
-	v := e.Value.(*lruSessionCacheEntry).state
-	if v != nil && v.session.version == VersionTLS13 {
+	entry := e.Value.(*lruSessionCacheEntry)
+	v := entry.state
+	switch {
+	case singleUse(v) && len(entry.older) > 0:
+		// Chromium's Entry::Pop: the one behind it is the newest now.
+		entry.state, entry.older = entry.older[0], entry.older[1:]
+		c.q.MoveToFront(e)
+	case singleUse(v):
 		c.q.Remove(e)
 		delete(c.m, key)
-	} else {
+	default:
 		c.q.MoveToFront(e)
 	}
 	return v, v != nil
