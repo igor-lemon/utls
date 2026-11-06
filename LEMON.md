@@ -635,3 +635,17 @@ or browser branch is added; this is the same unpublished engine1.
   www.example.test, two launches each: both sent, each replaced and removed
   by its own kind). The jar that reads it is fhttp's (`Options.HostOnlyApart`)
   under tls-forge's wrapper; absent, it is RFC 6265's.
+
+- **An ECH offer in the key log (2026-11-06)**: `logECHOffer` (common.go)
+  writes `ECH_SECRET` (the HPKE shared secret, `hpke.context.SharedSecret`)
+  and `ECH_CONFIG` (the config offered) by the outer hello's random, as NSS
+  writes them (draft-ietf-tls-keylogfile), right after the outer hello is
+  written, in Go's client and uTLS's alike; a failed write fails the
+  handshake, as the others do. The handshake's secrets go by the inner
+  hello's random when the server accepts, as BoringSSL writes them, and
+  without these lines nothing a reader of the log had opened the inner hello:
+  Wireshark (4.6.9, which reads both labels) showed the outer hello alone.
+  Tests in `u_ech_keylog_test.go`: the secret is the one the server's key
+  gives of the offer's encapsulated key, the handshake's lines the opened
+  inner hello's, over uTLS's and Go's client; GREASE writes none; a line
+  that cannot be written fails the handshake. 8 mutants, all killed.
