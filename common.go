@@ -1641,6 +1641,8 @@ const (
 	keyLogLabelServerHandshake = "SERVER_HANDSHAKE_TRAFFIC_SECRET"
 	keyLogLabelClientTraffic   = "CLIENT_TRAFFIC_SECRET_0"
 	keyLogLabelServerTraffic   = "SERVER_TRAFFIC_SECRET_0"
+	keyLogLabelECHSecret       = "ECH_SECRET"
+	keyLogLabelECHConfig       = "ECH_CONFIG"
 )
 
 // writeKeyLog exports secrets only to an explicitly selected writer.
@@ -1654,6 +1656,27 @@ func (c *Config) writeKeyLog(label string, clientRandom, secret []byte) error {
 	defer writerMutex.Unlock()
 	_, err := c.KeyLogWriter.Write(logLine)
 	return err
+}
+
+// logECHOffer writes an ECH offer to the key log, by the random of the outer
+// hello that carried it, as NSS writes it (draft-ietf-tls-keylogfile): the
+// KEM's shared secret (ECH_SECRET) and the ECHConfig (ECH_CONFIG). With them a
+// reader of the log opens the inner hello, whose random the handshake's
+// secrets are written by when the server accepts it; without them those
+// secrets open nothing. A failed write fails the handshake, as the others do.
+func (c *Conn) logECHOffer(ech *echClientContext, outerRandom []byte) error {
+	if ech == nil {
+		return nil
+	}
+	if err := c.config.writeKeyLog(keyLogLabelECHSecret, outerRandom, ech.hpkeContext.SharedSecret()); err != nil {
+		c.sendAlert(alertInternalError)
+		return err
+	}
+	if err := c.config.writeKeyLog(keyLogLabelECHConfig, outerRandom, ech.config.raw); err != nil {
+		c.sendAlert(alertInternalError)
+		return err
+	}
+	return nil
 }
 
 // writerMutex protects all KeyLogWriters globally. It is rarely enabled,

@@ -329,6 +329,9 @@ func (c *Conn) clientHandshake(ctx context.Context) (err error) {
 	if _, err := c.writeHandshakeRecord(hello, nil); err != nil {
 		return err
 	}
+	if err := c.logECHOffer(ech, hello.random); err != nil {
+		return err
+	}
 
 	if hello.earlyData {
 		suite := cipherSuiteTLS13ByID(session.cipherSuite)

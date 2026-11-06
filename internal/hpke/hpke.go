@@ -139,6 +139,11 @@ type Sender struct {
 	*context
 }
 
+// SharedSecret is the KEM's shared secret the context was made of: what a
+// key log says of an ECH offer (ECH_SECRET), with which a reader of it opens
+// the ECH payload.
+func (ctx *context) SharedSecret() []byte { return ctx.sharedSecret }
+
 type Receipient struct {
 	*context
 }

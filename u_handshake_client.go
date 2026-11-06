@@ -535,6 +535,11 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 	if _, err := c.writeHandshakeRecord(hello, nil); err != nil {
 		return err
 	}
+	// [uTLS section begins]
+	if err := c.logECHOffer(ech, hello.random); err != nil {
+		return err
+	}
+	// [uTLS section ends]
 
 	if hello.earlyData {
 		suite := cipherSuiteTLS13ByID(session.cipherSuite)
