@@ -63,6 +63,14 @@ var supported = map[string]spec{
 	"cache.invalid_freshness_policy":               {kind: "text", choices: []string{"ignore", "stale"}},
 	"cache.freshness_quoted_values":                {kind: "boolean"},
 	"cache.delta_seconds_limit":                    {kind: "number", min: 1, max: 9223372036},
+	"cache.store_any_status":                       {kind: "boolean"},
+	"cache.validated_statuses":                     {kind: "numbers"},
+	"cache.response_pragma_no_cache":               {kind: "boolean"},
+	"cache.request_no_cache":                       {kind: "text", choices: []string{"validate", "bypass"}},
+	"cache.heuristic_percent":                      {kind: "number", min: 1, max: 100},
+	"cache.heuristic_statuses":                     {kind: "numbers"},
+	"cache.heuristic_with_must_revalidate":         {kind: "boolean"},
+	"cache.implicit_fresh_statuses":                {kind: "numbers"},
 	"cookie.prefixes":                              {kind: "cookie-prefixes"},
 	"http.max_content_codings":                     {kind: "number", max: MaxContentCodings},
 	"http.content_coding_overflow":                 {kind: "text", choices: []string{"error", "raw"}},
@@ -1022,6 +1030,9 @@ func (p Policy) Validate() error {
 		return err
 	}
 	if err := validateALPS(p); err != nil {
+		return err
+	}
+	if err := validateCacheStatuses(p); err != nil {
 		return err
 	}
 	if err := validateQUICAcks(p); err != nil {
