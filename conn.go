@@ -1229,6 +1229,11 @@ func (c *Conn) unmarshalHandshakeMessage(data []byte, transcript transcriptHash)
 			return nil, c.in.setErrorLocked(err)
 		}
 	}
+	if c.isClient && c.config.Policy().Flag("tls.validate_server_hello_extensions") && data[0] == typeServerHello {
+		if err := c.validateServerHello(data); err != nil {
+			return nil, c.in.setErrorLocked(err)
+		}
+	}
 	if !m.unmarshal(data) {
 		return nil, c.in.setErrorLocked(c.sendAlert(alertDecodeError))
 	}
