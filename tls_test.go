@@ -950,6 +950,8 @@ func TestCloneNonFuncFields(t *testing.T) {
 			f.Set(reflect.ValueOf(true))
 		case "InsecureServerNameToVerify":
 			f.Set(reflect.ValueOf("c"))
+		case "SessionCacheKey": // [uTLS] the dialer's key of a session
+			f.Set(reflect.ValueOf("d:443"))
 		case "MinVersion", "MaxVersion":
 			f.Set(reflect.ValueOf(uint16(VersionTLS12)))
 		case "SessionTicketKey":

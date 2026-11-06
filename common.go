@@ -820,6 +820,13 @@ type Config struct {
 	// session resumption. It is only used by clients.
 	ClientSessionCache ClientSessionCache
 
+	// SessionCacheKey, when set, is the key a client's sessions are kept and
+	// looked up by in ClientSessionCache, in place of ServerName: a dialer
+	// that keys them as Chromium's SSLClientSessionCache::Key does (the
+	// server's host and port) gives it for each connection. It is only used
+	// by clients. [uTLS]
+	SessionCacheKey string
+
 	// UnwrapSession is called on the server to turn a ticket/identity
 	// previously produced by [WrapSession] into a usable session.
 	//
@@ -1056,6 +1063,7 @@ func (c *Config) Clone() *Config {
 		SessionTicketsDisabled:              c.SessionTicketsDisabled,
 		SessionTicketKey:                    c.SessionTicketKey,
 		ClientSessionCache:                  c.ClientSessionCache,
+		SessionCacheKey:                     c.SessionCacheKey,
 		UnwrapSession:                       c.UnwrapSession,
 		WrapSession:                         c.WrapSession,
 		MinVersion:                          c.MinVersion,
