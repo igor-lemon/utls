@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"slices"
 
 	"github.com/igor-lemon/utls/behavior"
 	"golang.org/x/crypto/cryptobyte"
@@ -105,22 +104,42 @@ func (c *Conn) validateServerExtensions(data []byte) error {
 }
 
 // validateServerHello holds a ServerHello's extensions to those BoringSSL
-// takes of it, as "tls.validate_server_hello_extensions" asks: of TLS 1.3
-// (supported_versions there), supported_versions, a key_share where the
-// client sent shares and pre_shared_key where it offered one, each once
-// (tls13_client.cc, ssl_parse_extensions); of a HelloRetryRequest, cookie,
-// key_share, supported_versions, and encrypted_client_hello where the client
-// sent one; of TLS 1.2 (ssl_scan_serverhello_tlsext), each the client
-// offered but GREASE and padding, no extension twice, which BoringSSL says
-// is a list that does not decode. Another is the profile's unsolicited
-// extension alert, one twice in TLS 1.3 its duplicate extension alert, and a
-// list that does not read its malformed extension alert.
+// takes of it, as "tls.validate_server_hello_extensions" asks, in its order.
+// Before it knows the version (parse_server_version) it reads the list, and
+// supported_versions alone in it where the legacy version is TLS 1.2: a list
+// that does not read, or supported_versions of other than one version, is
+// the profile's malformed extension alert, and supported_versions twice its
+// duplicate extension alert, in a record of TLS 1.0. A version the client
+// does not support is protocol_version, as pickTLSVersion says it, in a record
+// of TLS 1.0 too: a legacy version other than TLS 1.2 is the version. The rest it
+// refuses knowing the version, in a record of it (TLS 1.2's for TLS 1.3): of
+// TLS 1.3 (tls13_client.cc, ssl_parse_extensions) supported_versions, a
+// key_share where the client sent shares and pre_shared_key where it offered
+// one, each once; of a HelloRetryRequest, cookie, key_share,
+// supported_versions, and encrypted_client_hello where the client sent one;
+// of TLS 1.2 (ssl_scan_serverhello_tlsext) no extension twice, which
+// BoringSSL says is a list that does not decode, then each the client
+// offered that a TLS 1.2 server may answer (tls12ServerHello), and
+// compress_certificate, offered, as a list that does not decode. Another is
+// the profile's unsolicited extension alert, one twice in TLS 1.3 its
+// duplicate extension alert.
 func (c *Conn) validateServerHello(data []byte) error {
 	offered, err := c.offeredExtensions()
 	if offered == nil {
 		return err
 	}
 	return c.validateServerHelloOffered(offered, data)
+}
+
+// tls12ServerHello are the extensions a TLS 1.2 ServerHello may carry where
+// the client offered them, as BoringSSL's kExtensions parse them: the others
+// of its list are forbid_parse_serverhello's or need TLS 1.3, and one not in
+// it (pre_shared_key, padding, GREASE) is unknown.
+var tls12ServerHello = map[uint16]bool{
+	ExtensionServerName: true, ExtensionStatusRequest: true, ExtensionSupportedCurves: true,
+	ExtensionSupportedPoints: true, ExtensionALPN: true, ExtensionSCT: true,
+	ExtensionExtendedMasterSecret: true, ExtensionSessionTicket: true, ExtensionRenegotiationInfo: true,
+	ExtensionNextProtoNeg: true, fakeExtensionChannelID: true, 14 /* use_srtp */ : true,
 }
 
 // validateServerHelloOffered is validateServerHello of a client that offered
@@ -147,6 +166,7 @@ func (c *Conn) validateServerHelloOffered(offered map[uint16]bool, data []byte) 
 		return malformed()
 	}
 	var ids []uint16
+	var versions [][]byte
 	for !list.Empty() {
 		var id uint16
 		var body cryptobyte.String
@@ -154,13 +174,41 @@ func (c *Conn) validateServerHelloOffered(offered map[uint16]bool, data []byte) 
 			return malformed()
 		}
 		ids = append(ids, id)
+		if id == ExtensionSupportedVersions {
+			versions = append(versions, body)
+		}
 	}
-	tls13 := slices.Contains(ids, ExtensionSupportedVersions)
+	negotiated := version
+	if version == VersionTLS12 && len(versions) > 0 {
+		if len(versions) > 1 {
+			c.sendAlert(alert(p.Uint("tls.duplicate_extension_alert")))
+			return errors.New("tls: repeated ServerHello extension")
+		}
+		if len(versions[0]) != 2 {
+			return malformed()
+		}
+		negotiated = binary.BigEndian.Uint16(versions[0])
+	}
+	if _, ok := c.config.mutualVersion(roleClient, c.quic != nil, []uint16{negotiated}); !ok {
+		// As pickTLSVersion says it, but of the version BoringSSL reads: a
+		// legacy version other than TLS 1.2 is the version, whatever
+		// supported_versions says (crypto/tls would take TLS 1.3 of it).
+		c.sendAlert(alertProtocolVersion)
+		return fmt.Errorf("tls: server selected unsupported protocol version %x", negotiated)
+	}
+	// The rest goes in a record of the version, as pickTLSVersion would set it.
+	known := func(a alert) {
+		before := c.vers
+		c.vers = negotiated
+		c.sendAlert(a)
+		c.vers = before
+	}
+	tls13 := negotiated == VersionTLS13
 	retry := bytes.Equal(random, helloRetryRequestRandom) // of TLS 1.3 alone
 	takes := func(id uint16) bool {
 		switch {
 		case !tls13:
-			return offered[id] && !isGREASEUint16(id) && id != ExtensionPadding
+			return offered[id] && tls12ServerHello[id]
 		case id == ExtensionSupportedVersions:
 			return true
 		case id == ExtensionKeyShare:
@@ -177,18 +225,25 @@ func (c *Conn) validateServerHelloOffered(offered map[uint16]bool, data []byte) 
 	seen := map[uint16]bool{}
 	for _, id := range ids {
 		if !tls13 && seen[id] {
-			return malformed()
+			known(alert(p.Uint("tls.malformed_extension_alert")))
+			return errors.New("tls: malformed ServerHello extensions")
 		}
 		seen[id] = true
 	}
 	clear(seen)
 	for _, id := range ids {
+		if !tls13 && id == ExtensionCompressCertificate && offered[id] {
+			// cert_compression_parse_serverhello takes none, with the
+			// decode_error its caller says by default.
+			known(alert(p.Uint("tls.malformed_extension_alert")))
+			return errors.New("tls: malformed ServerHello extensions")
+		}
 		if !takes(id) {
-			c.sendAlert(alert(p.Uint("tls.unsolicited_extension_alert")))
+			known(alert(p.Uint("tls.unsolicited_extension_alert")))
 			return fmt.Errorf("tls: server sent an unsolicited ServerHello extension %d", id)
 		}
 		if seen[id] {
-			c.sendAlert(alert(p.Uint("tls.duplicate_extension_alert")))
+			known(alert(p.Uint("tls.duplicate_extension_alert")))
 			return errors.New("tls: repeated ServerHello extension")
 		}
 		seen[id] = true

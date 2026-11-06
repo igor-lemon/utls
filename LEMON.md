@@ -71,6 +71,29 @@ module proxy holds for the tag), on the branch `tls-forge`, for
   extension it did not know. `u_server_hello_test.go`: the table, the
   alert on the wire, the registry's requirement; 20 mutants killed.
 
+- **A refused ServerHello in BoringSSL's order and record (2026-11-06)**:
+  tls-forge's wire test of the check above found its alert in a record of
+  TLS 1.0, where Chrome's is in one of TLS 1.2: BoringSSL refuses the
+  extensions once the version is known (do_read_server_hello sets
+  `s3->version` first, and `tls_record_version` freezes TLS 1.3's at TLS
+  1.2). Only what parse_server_version reads before that, the list and
+  supported_versions where the legacy version is TLS 1.2, is alerted in a
+  record of TLS 1.0: a list that does not read, supported_versions of other
+  than one version (decode_error; Go's unmarshal said unexpected_message),
+  supported_versions twice (illegal_parameter, before any extension
+  unknown). A version the client does not support is protocol_version
+  there too, the legacy version the version unless it is TLS 1.2: crypto/tls
+  took TLS 1.3 from supported_versions of a legacy TLS 1.0 hello. Of TLS 1.2
+  a ServerHello may answer only what BoringSSL's kExtensions parse there
+  (`tls12ServerHello`): key_share, supported_versions, signature_algorithms,
+  psk_key_exchange_modes, cookie, ALPS, ECH, trust_anchors and pre_shared_key
+  offered are unsupported_extension, compress_certificate a decode_error.
+  Contents (a non-empty extended_master_secret, say) are not held to
+  BoringSSL's, nor the order of a hello wrong twice over (BoringSSL checks
+  its cipher suite and session ID before the extensions of TLS 1.3).
+  `u_server_hello_record_test.go` (17 cases, the record of each alert); 13
+  mutants killed.
+
 - **Hardware cipher selection capability (A13, pending engine1)**:
   `AESGCMHardwareSupport` reports the crypto backend's CPU capability, including
   Go feature overrides. It selects no wire values: owner JSON supplies the cipher
