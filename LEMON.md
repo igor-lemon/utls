@@ -37,6 +37,15 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 
 ## Patches
 
+- **TLS 1.3's ALPN alert the profile's (review 2026-11-05, 1.4)**: a
+  protocol a server says it chose that the client did not offer is alerted
+  with `tls.alpn_mismatch_alert` in TLS 1.3 as in TLS 1.2 (BoringSSL's
+  ext_alpn_parse_serverhello: illegal_parameter of both), where crypto/tls
+  sent no_application_protocol whatever the profile said. A QUIC server that
+  chose none still gets no_application_protocol. `testingOnlyServerALPN`
+  makes a TLS 1.3 server say a protocol (`u_alpn_alert_test.go`, over TCP:
+  a pipe holds the server's flight); 3 mutants killed.
+
 - **ServerHello extensions held to BoringSSL's (review 2026-11-05, 1.3)**:
   `tls.validate_server_hello_extensions` has `validateServerHello`
   (u_chrome_policy.go, from `readHandshake` before the message is read)

@@ -783,6 +783,9 @@ func (hs *serverHandshakeStateTLS13) sendServerParameters() error {
 
 	encryptedExtensions := new(encryptedExtensionsMsg)
 	encryptedExtensions.alpnProtocol = c.clientProtocol
+	if testingOnlyServerALPN != "" {
+		encryptedExtensions.alpnProtocol = testingOnlyServerALPN
+	}
 
 	if c.quic != nil {
 		p, err := c.quicGetTransportParameters()

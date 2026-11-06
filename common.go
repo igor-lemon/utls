@@ -263,6 +263,10 @@ const (
 // include downgrade canaries even if it's using its highers supported version.
 var testingOnlyForceDowngradeCanary bool
 
+// testingOnlyServerALPN, when set, is the protocol a TLS 1.3 server says it
+// chose in its EncryptedExtensions, whatever the client offered.
+var testingOnlyServerALPN string
+
 // ConnectionMetrics contains basic metrics about the connection.
 type ConnectionMetrics struct {
 	// ClientSentTicket is true if the client has sent a TLS 1.2 session ticket
