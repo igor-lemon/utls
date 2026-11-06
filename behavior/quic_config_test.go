@@ -92,6 +92,25 @@ func TestSessionCacheCapacitiesAreExplicitAndBounded(t *testing.T) {
 	}
 }
 
+func TestSessionsPerCacheEntryAreExplicitAndBounded(t *testing.T) {
+	for _, key := range []string{"tls.session_cache_sessions_per_entry", "quic.session_cache_sessions_per_entry"} {
+		for _, value := range []string{"1", "2", "16"} {
+			p := Generic()
+			p[key] = json.RawMessage(value)
+			if err := p.Validate(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, value := range []string{"0", "17", "-1", "null", "1.5", "\"2\""} {
+			p := Generic()
+			p[key] = json.RawMessage(value)
+			if err := p.Validate(); err == nil {
+				t.Errorf("%s=%s accepted", key, value)
+			}
+		}
+	}
+}
+
 func TestQUICTLSAndCacheChoicesAreCoherent(t *testing.T) {
 	for _, tc := range []struct {
 		source  string

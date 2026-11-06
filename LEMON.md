@@ -37,6 +37,18 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 
 ## Patches
 
+- **Two sessions a key, as Chromium's caches keep (review 2026-11-05, 1.5)**:
+  `NewLRUClientSessionCacheOf(capacity, perKey)` keeps up to perKey sessions
+  a key, as `SSLClientSessionCache::Entry` (net/ssl, 156) and quiche's
+  `QuicClientSessionCache::Entry` keep two: a single-use (TLS 1.3) session
+  put where another is moves that one behind it, a reusable one takes its
+  place, and Take takes the newest. `NewLRUClientSessionCache` keeps one, as
+  before. The registry has `tls.session_cache_sessions_per_entry` and
+  `quic.session_cache_sessions_per_entry` (1..16) for tls-client to read.
+  Before, a server's second ticket replaced its first, and a second
+  connection at once went through a full handshake. `u_session_cache_test.go`;
+  7 mutants killed.
+
 - **TLS 1.3's ALPN alert the profile's (review 2026-11-05, 1.4)**: a
   protocol a server says it chose that the client did not offer is alerted
   with `tls.alpn_mismatch_alert` in TLS 1.3 as in TLS 1.2 (BoringSSL's
