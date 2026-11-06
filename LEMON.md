@@ -626,3 +626,12 @@ Tests in `u_ech_spec_test.go`: `TestAListWithNoConfigTheProfileCanUseSendsGREASE
 `TestAHelloOfNoConfigTheProfileCanUseGoesOnAsOneOfNoList`,
 `TestAListThatDoesNotReadSendsNothing` (15 mutants, all killed). No JSON value
 or browser branch is added; this is the same unpublished engine1.
+
+- **A cookie's identity (2026-11-06)**: the registry's `cookie.identity` is
+  what makes two cookies one: `name-domain-path`, RFC 6265's (5.3, step 11),
+  or `name-domain-host-only-path`, RFC 6265bis's (5.7, step 22), under which
+  a cookie its host's alone and one of a Domain naming that host are two.
+  Chrome 156.0.8078.80 keeps them so (measured at example.test and
+  www.example.test, two launches each: both sent, each replaced and removed
+  by its own kind). The jar that reads it is fhttp's (`Options.HostOnlyApart`)
+  under tls-forge's wrapper; absent, it is RFC 6265's.
