@@ -248,6 +248,10 @@ const (
 // include downgrade canaries even if it's using its highers supported version.
 var testingOnlyForceDowngradeCanary bool
 
+// testingOnlyServerALPN, when set, is the protocol a TLS 1.3 server says it
+// chose in its EncryptedExtensions, whatever the client offered.
+var testingOnlyServerALPN string
+
 // ConnectionState records basic TLS details about the connection.
 type ConnectionState struct {
 	// Version is the TLS version used by the connection (e.g. VersionTLS12).

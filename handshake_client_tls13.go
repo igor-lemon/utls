@@ -743,7 +743,15 @@ func (hs *clientHandshakeStateTLS13) readServerParameters() error {
 		// does not specify how clients handle the selection of an incompatible protocol.
 		// RFC 9001 Section 8.1 specifies that QUIC clients send no_application_protocol
 		// in this case. Always sending no_application_protocol seems reasonable.
-		c.sendAlert(alertNoApplicationProtocol)
+		// [UTLS] A profile's tls.alpn_mismatch_alert is sent instead for a
+		// protocol the client did not offer, as for TLS 1.2: BoringSSL's
+		// ext_alpn_parse_serverhello says illegal_parameter of both.
+		chosenAlert := alertNoApplicationProtocol
+		if c.config.Policy().Has("tls.alpn_mismatch_alert") && len(hs.hello.alpnProtocols) > 0 &&
+			encryptedExtensions.alpnProtocol != "" {
+			chosenAlert = alert(c.config.Policy().Uint("tls.alpn_mismatch_alert"))
+		}
+		c.sendAlert(chosenAlert)
 		return err
 	}
 	c.clientProtocol = encryptedExtensions.alpnProtocol
