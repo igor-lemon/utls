@@ -263,6 +263,7 @@ var supported = map[string]spec{
 	"h3.alps_close_code":                           {kind: "number", max: 1<<62 - 1},
 	"h3.alps_close_frame_type":                     {kind: "number", max: 1<<62 - 1},
 	"h3.alps_close_reason":                         {kind: "template", max: 1024, holes: map[string][]string{"": {"detail"}}},
+	"h3.server_bidi_stream_close_reason":           {kind: "quic-reason", max: 1024},
 	"h3.alps_errors":                               {kind: "templates", max: 1024, holes: alpsErrors},
 	"h3.peer_settings":                             {kind: "text", choices: []string{"quiche"}},
 	"h3.settings_close_space":                      {kind: "text", choices: []string{"transport", "application"}},
