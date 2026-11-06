@@ -417,6 +417,7 @@ var supported = map[string]spec{
 	"cookie.raw_fields":                            {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"cookie.ip_domain_host_only":                   {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"cookie.reset_order_on_value_change":           {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
+	"cookie.identity":                              {kind: "text", choices: []string{"name-domain-path", "name-domain-host-only-path"}},
 	"cookie.max_age_seconds":                       {kind: "number", min: 1, max: 2147483647, choices: []string{}},
 	"cookie.max_pair_bytes":                        {kind: "number", min: 1, max: 2147483647, choices: []string{}},
 	"cookie.max_attribute_bytes":                   {kind: "number", min: 1, max: 2147483647, choices: []string{}},
