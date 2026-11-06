@@ -649,3 +649,15 @@ or browser branch is added; this is the same unpublished engine1.
   gives of the offer's encapsulated key, the handshake's lines the opened
   inner hello's, over uTLS's and Go's client; GREASE writes none; a line
   that cannot be written fails the handshake. 8 mutants, all killed.
+
+- **What a browser's cache keeps (2026-11-06, review M8)**: the registry's
+  `cache.store_any_status`, `cache.validated_statuses`,
+  `cache.response_pragma_no_cache`, `cache.request_no_cache`
+  (validate | bypass), `cache.heuristic_percent`, `cache.heuristic_statuses`,
+  `cache.heuristic_with_must_revalidate` (the three together) and
+  `cache.implicit_fresh_statuses`, statuses final and once each
+  (`behavior/cache.go`, `validateCacheStatuses`). Chrome 156.0.8078.80 keeps
+  as Chromium's GetFreshnessLifetimes, ConditionalizeRequest and
+  kForceFetchHeaders say (tls-forge's testdata/chrome156-cache-rules.json,
+  23 scenarios, two launches alike); tls-forge's cache reads them. Test:
+  `behavior/cache_test.go`; 7 mutants, all killed.
