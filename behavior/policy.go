@@ -289,6 +289,7 @@ var supported = map[string]spec{
 	"h1.max_idle_connections":                      {kind: "number", min: 1, max: 2147483647, choices: []string{}},
 	"h1.missing_status":                            {kind: "number", min: 0, max: 4294967295, choices: []string{}},
 	"h1.preserve_framing_fields":                   {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
+	"h1.chunked_bare_lf":                           {kind: "boolean", min: 0, max: 4294967295, choices: []string{}},
 	"h2.encoder_table_bytes":                       {kind: "number", min: 0, max: 4294967295, choices: []string{}},
 	"h2.header_frame_payload":                      {kind: "number", min: 0, max: 4294967295, choices: []string{}},
 	"h2.data_frame_payload":                        {kind: "number", min: 0, max: 4294967295, choices: []string{}},
