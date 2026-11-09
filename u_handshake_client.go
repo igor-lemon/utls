@@ -11,10 +11,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/andybalholm/brotli"
 	"github.com/igor-lemon/utls/internal/fips140tls"
-	"github.com/igor-lemon/utls/internal/hpke"
 	"github.com/igor-lemon/utls/internal/tls13"
 	"github.com/klauspost/compress/zstd"
 )
@@ -115,6 +115,13 @@ func (hs *clientHandshakeStateTLS13) decompressCert(m utlsCompressedCertificateM
 	if len(body) != int(m.uncompressedLength) {
 		c.sendAlert(alertBadCertificate)
 		return nil, fmt.Errorf("decompressed len (%d) does not match specified len (%d)", len(body), m.uncompressedLength)
+	}
+	// A decoder can stop at the end of its stream without reading what comes
+	// after it (zlib does). Brotli reads its own copy of the stream
+	// (brotliWindowFor) and refuses input past its end itself.
+	if CertCompressionAlgo(m.algorithm) != CertCompressionBrotli && compressed.Len() != 0 {
+		c.sendAlert(alertBadCertificate)
+		return nil, errors.New("trailing data after compressed certificate stream")
 	}
 	rawMsg := make([]byte, len(body)+4) // +4 for message type and uint24 length field
 	rawMsg[0] = typeCertificate
@@ -228,11 +235,14 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 		return nil, nil, nil, errors.New("tls: NextProtos values too large")
 	}
 
-	supportedVersions := config.supportedVersions(roleClient)
+	supportedVersions := config.supportedVersions(roleClient, c.quic != nil)
 	if len(supportedVersions) == 0 {
 		return nil, nil, nil, errors.New("tls: no supported versions satisfy MinVersion and MaxVersion")
 	}
-	maxVersion := config.maxSupportedVersion(roleClient)
+	// Since supportedVersions is sorted in descending order, the first element
+	// is the maximum version and the last element is the minimum version.
+	maxVersion := supportedVersions[0]
+	minVersion := supportedVersions[len(supportedVersions)-1]
 
 	hello := &clientHelloMsg{
 		vers:                         maxVersion,
@@ -260,24 +270,12 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 		hello.secureRenegotiation = c.clientFinished[:]
 	}
 
-	preferenceOrder := cipherSuitesPreferenceOrder
-	if !hasAESGCMHardwareSupport {
-		preferenceOrder = cipherSuitesPreferenceOrderNoAES
-	}
-	configCipherSuites := config.cipherSuites()
-	hello.cipherSuites = make([]uint16, 0, len(configCipherSuites))
-
-	for _, suiteId := range preferenceOrder {
-		suite := mutualCipherSuite(configCipherSuites, suiteId)
-		if suite == nil {
-			continue
-		}
-		// Don't advertise TLS 1.2-only cipher suites unless
-		// we're attempting TLS 1.2.
-		if maxVersion < VersionTLS12 && suite.flags&suiteTLS12 != 0 {
-			continue
-		}
-		hello.cipherSuites = append(hello.cipherSuites, suiteId)
+	hello.cipherSuites = config.cipherSuites(hasAESGCMHardwareSupport)
+	// Don't advertise TLS 1.2-only cipher suites unless we're attempting TLS 1.2.
+	if maxVersion < VersionTLS12 {
+		hello.cipherSuites = slices.DeleteFunc(hello.cipherSuites, func(id uint16) bool {
+			return cipherSuiteByID(id).flags&suiteTLS12 != 0
+		})
 	}
 
 	_, err := io.ReadFull(config.rand(), hello.random)
@@ -298,20 +296,19 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 	}
 
 	if maxVersion >= VersionTLS12 {
-		hello.supportedSignatureAlgorithms = supportedSignatureAlgorithms()
-	}
-	if testingOnlyForceClientHelloSignatureAlgorithms != nil {
-		hello.supportedSignatureAlgorithms = testingOnlyForceClientHelloSignatureAlgorithms
+		hello.supportedSignatureAlgorithms = supportedSignatureAlgorithms(minVersion, maxVersion)
+		hello.supportedSignatureAlgorithmsCert = supportedSignatureAlgorithmsCert(minVersion, maxVersion)
 	}
 
 	var keyShareKeys *keySharePrivateKeys
-	if hello.supportedVersions[0] == VersionTLS13 {
+	if maxVersion >= VersionTLS13 {
 		// Reset the list of ciphers when the client only supports TLS 1.3.
-		if len(hello.supportedVersions) == 1 {
+		if minVersion >= VersionTLS13 {
 			hello.cipherSuites = nil
 		}
+
 		if fips140tls.Required() {
-			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13FIPS...)
+			hello.cipherSuites = append(hello.cipherSuites, allowedCipherSuitesTLS13FIPS...)
 		} else if hasAESGCMHardwareSupport {
 			hello.cipherSuites = append(hello.cipherSuites, defaultCipherSuitesTLS13...)
 		} else {
@@ -319,7 +316,7 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 		}
 
 		if len(hello.supportedCurves) == 0 {
-			return nil, nil, nil, errors.New("tls: no supported elliptic curves for ECDHE")
+			return nil, nil, nil, errors.New("tls: no supported key exchange methods (CurveIDs)")
 		}
 		// curveID := hello.supportedCurves[0]
 		// keyShareKeys = &keySharePrivateKeys{curveID: curveID}
@@ -387,11 +384,11 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		echConfig := pickECHConfig(echConfigs)
+		echConfig, echPK, kdf, aead := pickECHConfig(echConfigs)
 		if echConfig == nil {
 			return nil, nil, nil, errors.New("tls: EncryptedClientHelloConfigList contains no valid configs")
 		}
-		ech = &echClientContext{config: echConfig}
+		ech = &echClientContext{config: echConfig, kdfID: kdf.ID(), aeadID: aead.ID()}
 		hello.encryptedClientHello = []byte{1} // indicate inner hello
 		// We need to explicitly set these 1.2 fields to nil, as we do not
 		// marshal them when encoding the inner hello, otherwise transcripts
@@ -401,17 +398,8 @@ func (c *Conn) makeClientHelloForApplyPreset() (*clientHelloMsg, *keySharePrivat
 		hello.secureRenegotiationSupported = false
 		hello.extendedMasterSecret = false
 
-		echPK, err := hpke.ParseHPKEPublicKey(ech.config.KemID, ech.config.PublicKey)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		suite, err := pickECHCipherSuite(ech.config.SymmetricCipherSuite)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		ech.kdfID, ech.aeadID = suite.KDFID, suite.AEADID
 		info := append([]byte("tls ech\x00"), ech.config.raw...)
-		ech.encapsulatedKey, ech.hpkeContext, err = hpke.SetupSender(ech.config.KemID, suite.KDFID, suite.AEADID, echPK, info)
+		ech.encapsulatedKey, ech.hpkeContext, err = newECHSender(ech.config, echPK, kdf, aead, info)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -541,6 +529,11 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 	}
 	// [uTLS section ends]
 
+	// Client sent a session ticket or PSK.
+	if session != nil {
+		c.clientSentTicket = true
+	}
+
 	if hello.earlyData {
 		suite := cipherSuiteTLS13ByID(session.cipherSuite)
 		transcript := suite.hash.New()
@@ -570,7 +563,7 @@ func (c *UConn) clientHandshake(ctx context.Context) (err error) {
 	// If we are negotiating a protocol version that's lower than what we
 	// support, check for the server downgrade canaries.
 	// See RFC 8446, Section 4.1.3.
-	maxVers := c.config.maxSupportedVersion(roleClient)
+	maxVers := c.config.maxSupportedVersion(roleClient, c.quic != nil)
 	tls12Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS12
 	tls11Downgrade := string(serverHello.random[24:]) == downgradeCanaryTLS11
 	if maxVers == VersionTLS13 && c.vers <= VersionTLS12 && (tls12Downgrade || tls11Downgrade) ||
@@ -635,10 +628,13 @@ func (c *UConn) echTranscriptMsg(outer *clientHelloMsg, echCtx *echClientContext
 		return transcriptMsg(echCtx.innerHello, echCtx.innerTranscript)
 	}
 	// Recreate the inner ClientHello from its compressed form using server's decodeInnerClientHello function.
-	// See https://github.com/refraction-networking/utls/blob/e430876b1d82fdf582efc57f3992d448e7ab3d8a/ech.go#L276-L283
-	encodedInner, err := encodeInnerClientHelloReorderOuterExts(echCtx.innerHello, int(echCtx.config.MaxNameLength), c.extensionsList())
-	if err != nil {
-		return err
+	// See https://github.com/igor-lemon/utls/blob/e430876b1d82fdf582efc57f3992d448e7ab3d8a/ech.go#L276-L283
+	encodedInner := echCtx.encodedInner
+	if encodedInner == nil {
+		encodedInner, err = encodeInnerClientHelloReorderOuterExts(echCtx.innerHello, int(echCtx.config.MaxNameLength), c.extensionsList())
+		if err != nil {
+			return err
+		}
 	}
 
 	decodedInner, err := decodeInnerClientHello(outer, encodedInner)

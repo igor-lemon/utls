@@ -188,7 +188,7 @@ func (uconn *UConn) startSpecECH() error {
 	p := uconn.config.Policy()
 	configs, ok := specECHConfigs(uconn.config.EncryptedClientHelloConfigList)
 	if !ok {
-		return errMalformedECHConfig
+		return errMalformedECHConfigList
 	}
 	config, suite, ok := pickSpecECHConfig(configs, p)
 	if !ok {

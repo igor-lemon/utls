@@ -39,7 +39,8 @@ func TestExplicitHybridKeyShareReuseAndIndependentDefault(t *testing.T) {
 				}
 				if reuse {
 					var hybrid, x []byte
-					for _, e := range spec.Extensions {
+					// ApplyPreset works on a copy of the spec: what goes out is the UConn's.
+					for _, e := range c.Extensions {
 						if k, ok := e.(*KeyShareExtension); ok {
 							for _, s := range k.KeyShares {
 								if s.Group == X25519MLKEM768 {

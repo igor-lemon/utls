@@ -224,7 +224,7 @@ func (c *Conn) validateServerHelloOffered(offered map[uint16]bool, data []byte) 
 		}
 		negotiated = binary.BigEndian.Uint16(versions[0])
 	}
-	if _, ok := c.config.mutualVersion(roleClient, []uint16{negotiated}); !ok {
+	if _, ok := c.config.mutualVersion(roleClient, c.quic != nil, []uint16{negotiated}); !ok {
 		// As pickTLSVersion says it, but of the version BoringSSL reads: a
 		// legacy version other than TLS 1.2 is the version, whatever
 		// supported_versions says (crypto/tls would take TLS 1.3 of it).

@@ -21,6 +21,8 @@ func TestA13NativeHybridKeyShareRelationship(t *testing.T) {
 	if err := c.BuildHandshakeState(); err != nil {
 		t.Fatal(err)
 	}
+	// ApplyPreset works on a copy of the spec: what goes out is the UConn's.
+	ext = c.Extensions[len(c.Extensions)-1].(*KeyShareExtension)
 	hybrid, x := ext.KeyShares[0].Data, ext.KeyShares[1].Data
 	if len(hybrid) != 1216 || len(x) != 32 {
 		t.Fatalf("lengths %d %d", len(hybrid), len(x))

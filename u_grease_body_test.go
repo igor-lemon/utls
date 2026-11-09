@@ -16,6 +16,9 @@ func TestExplicitGREASEPayloadSurvivesApplyPreset(t *testing.T) {
 			if err := c.ApplyPreset(&spec); err != nil {
 				t.Fatal(err)
 			}
+			// ApplyPreset works on a copy of the spec: what goes out is the UConn's.
+			first = c.Extensions[len(c.Extensions)-2].(*UtlsGREASEExtension)
+			last = c.Extensions[len(c.Extensions)-1].(*UtlsGREASEExtension)
 			want := second
 			if !explicit {
 				want = []byte{0}

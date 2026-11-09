@@ -1104,7 +1104,7 @@ func TestAListThatDoesNotReadSendsNothing(t *testing.T) {
 		{"a good config, then a bad one", listOf(good, rawECHConfig(extensionEncryptedClientHello, nil))},
 	} {
 		run := s.handshake(t, tc.list, s.serverConfig(true), nil)
-		if !errors.Is(run.clientErr, errMalformedECHConfig) || len(run.hellos) != 0 {
+		if !errors.Is(run.clientErr, errMalformedECHConfigList) || len(run.hellos) != 0 {
 			t.Errorf("%s: %v, %d hellos", tc.name, run.clientErr, len(run.hellos))
 		}
 	}
