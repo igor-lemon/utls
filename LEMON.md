@@ -1,8 +1,9 @@
 # utls for tls-forge
 
-A fork of [bogdanfinn/utls](https://github.com/bogdanfinn/utls)
-v1.7.8-barnius (`2557d0b9370fb665343b86dcac1c0e44b48e715c`, the commit Go's
-module proxy holds for the tag), on the branch `tls-forge`, for
+A fork of [bogdanfinn/utls](https://github.com/bogdanfinn/utls) v1.7.8-barnius
+(`2557d0b9370fb665343b86dcac1c0e44b48e715c`, the commit Go's module proxy
+holds for the tag), its patches laid over v1.8.2-barnius since 2026-11-10
+(below), on the branch `tls-forge`, for
 [tls-forge](https://github.com/Sec-CH-Lemon/tls-forge).
 
 - The module is `github.com/igor-lemon/utls`: every import of
@@ -34,6 +35,105 @@ module proxy holds for the tag), on the branch `tls-forge`, for
 
       GOWORK="$PWD/../../tls-forge/go.work" go test ./... -count=1
       GOWORK=off go test ./... -count=1
+
+## The branch: bogdanfinn's release, then the patches (2026-11-10)
+
+`git log --first-parent v1.8.2-barnius..tls-forge` lists the branch as it is
+laid out: bogdanfinn's v1.8.2-barnius (`40d542347353`), then "Rename the
+module ...", the rename above, made by a script (the five forks' module paths
+in every Go file and go.mod, imports sorted), then this fork's patches, one
+commit a change, oldest first, as this file tells them. A merge on top, `-s
+ours`, joins the branch's earlier head: the branch only ever moves forward,
+every commit a published pin names stays in it, and the merge's tree is the
+last patch's.
+
+On 2026-11-10 the history to then (80 patches written over v1.7.8-barnius, and
+the merge of v1.8.2-barnius of 2026-11-09) was laid over v1.8.2-barnius so:
+each patch cherry-picked over the renamed release, a conflict resolved toward
+the merge's tree, and what the merge itself had resolved put into the patch it
+belongs to (the section on v1.8.2-barnius says what was decided). The last
+patch's tree is the merge's, byte for byte, but for this section. Every commit
+of the series builds and passes go vet (Go 1.27.3, GOWORK=off).
+
+To take another release of bogdanfinn's, with tls-forge's
+`scripts/fork_sync.py`, in a clone (this checkout is not touched):
+
+    python3 scripts/fork_sync.py start ../forks/utls vX.Y.Z --work /tmp/utls-sync
+    # a conflict stops it: resolve it, git add, then
+    python3 scripts/fork_sync.py continue --work /tmp/utls-sync
+    # what has to change for it to build, made in the clone, goes into the
+    # patch whose lines it touches (or the one --to "SUBJECT=PATH" names)
+    python3 scripts/fork_sync.py absorb --work /tmp/utls-sync
+    python3 scripts/fork_sync.py check --work /tmp/utls-sync --with ...
+    python3 scripts/fork_sync.py finish --work /tmp/utls-sync -m "Patches laid over vX.Y.Z"
+
+then `git merge --ff-only` of the clone's head on this branch. A conflict that
+only moves an import the rename changed settles itself; git rerere keeps the
+others; go.mod is merged module by module (the higher version) and go.sum by
+union. The forks go in tls-forge's order: utls, fhttp, websocket and
+quic-go-utls, tls-client; `check --with` builds a fork against the new series
+of the ones before it.
+
+## Upstream v1.8.2-barnius merged (2026-11-09)
+
+bogdanfinn's v1.8.2-barnius (`40d5423`, one squash of refraction-networking's
+master and crypto/tls of Go 1.25 to 1.27; its history is
+`rebase-upstream-master`, `4c28bd0`, the same tree) is merged into this
+branch. The module now says `go 1.27`: it imports `crypto/mldsa` (Go 1.27) and
+`crypto/hpke` (Go 1.26). Where both sides had made the same change, one is
+kept; where they differ, as follows.
+
+- **Same fix twice**: `anyValidVerifiedChain` (CVE-2025-68121) was this
+  fork's back-port and upstream's, byte for byte: one copy left, and the
+  second resumption check in `loadSession` with it. `setReadTrafficSecret`
+  (CVE-2025-61730) takes upstream's `locked` argument (its CVE-2026-32283
+  fix); `handleKeyUpdate` keeps this fork's order, the read keys first and then
+  the answer, so `tls.defer_key_update`'s early return still updates them.
+  The HRR binders stay this fork's (281f37f, over the profile-shaped
+  ClientHello2); upstream's `UpdateOnHRR` call after it, which would bind
+  them a second time, is taken out. The Go security tests this fork had
+  ported (`u_read_keys_security_test.go`, `u_resumption_trust_security_test.go`)
+  are upstream's own now; the parrot's case is kept as
+  `TestAParrotRefusesAServerHellosTrailingMessage`.
+- **HPKE**: upstream seals ECH with Go's `crypto/hpke`, which keeps the KEM's
+  shared secret to itself. `newECHSender` (`u_ech_sender.go`) seals a
+  DHKEM(X25519) offer, the KEM browsers offer, with `internal/hpke` (kept, with
+  `internal/hkdf` for it), so the key log still writes `ECH_SECRET`; another
+  KEM goes through `crypto/hpke` and writes no ECH lines. The profile's own
+  offer (`u_ech_spec.go`) is as it was.
+- **ALPN with ECH**: upstream leaves `Config.NextProtos` alone when ECH configs
+  are given ("Hide ALPN in ECH"); an offer of the profile's own
+  (`offersSpecECH`) sets them as before, as its inner hello carries the
+  outer's ALPN (without it a TLS 1.2 server's ALPN was refused).
+- **Certificate compression**: this fork's decoder stays (the engine's
+  Certificate limit, `brotliWindowFor`, andybalholm/brotli 1.2.7, not
+  upstream's go-brrr). Upstream's refusal of compressed bytes after the
+  stream is taken for zlib and zstd; brotli refuses them itself. Upstream's
+  tests' large certificates are cut to fit under the limit, and its brotli
+  test compresses with andybalholm/brotli.
+- **Key share reuse**: this fork's `ReuseWith` (74878a2, what tls-forge's
+  descriptors say) and upstream's markers (`ReuseHybridAndClassicalKeyShares`)
+  both work; MLKEM1024 shares come with upstream.
+- **ApplyPreset** works on a deep copy of the spec (upstream 98f1bbc): the
+  fork's tests read the UConn's extensions, not the spec's.
+- **trust_anchors** (0xca34) is read into upstream's `TrustAnchorsExtension`
+  (the fingerprinter, `ExtensionFromID`), not a `GenericExtension` of its
+  bytes: tls-forge, which orders the IDs by its profile
+  (`tls.trust_anchor_order`) in `profile.Spec`, has to take them from it when
+  it requires this utls; tls-client's QUIC hello keeps it.
+- A malformed handshake message (an empty ServerHello) is answered with
+  decode_error (50), as BoringSSL answers it, where unexpected_message (10)
+  was: Go's own change, not measured against Chrome.
+- QUIC clamps the minimum version to TLS 1.3 instead of refusing a lower
+  `MinVersion` at Start; key log write errors say `tls: KeyLogWriter:`;
+  `GetGREASEVersion` draws a real reserved version (tls-forge's TP 17 comes
+  from quic-go-utls). SSLKEYLOGFILE stays ignored (A4).
+- The tests this fork wrote against crypto/tls's fixtures before Go 1.26
+  regenerated them get them from `u_legacy_fixtures_test.go`. `behavior`'s
+  JSON syntax cases hold the key, not encoding/json's words, which Go 1.27
+  changed.
+
+`GOWORK=off GOTOOLCHAIN=go1.27.3 go test ./...` passes, `-race` too.
 
 ## Patches
 
