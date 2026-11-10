@@ -38,7 +38,6 @@ import (
 	"github.com/igor-lemon/utls/internal/boring"
 	"github.com/igor-lemon/utls/internal/cryptotest"
 	"github.com/igor-lemon/utls/internal/fips140tls"
-	"github.com/igor-lemon/utls/internal/testenv"
 )
 
 var testTime = func() time.Time { return time.Unix(1476984729, 0) }
@@ -673,38 +672,96 @@ func TestVerifyHostname(t *testing.T) {
 }
 
 func TestRealResumption(t *testing.T) {
-	testenv.MustHaveExternalNetwork(t)
-
-	config := &Config{
-		ServerName:         "yahoo.com",
-		ClientSessionCache: NewLRUClientSessionCache(0),
+	// [utls fork] An owned verified TLS peer on loopback, not yahoo.com:
+	// tests reach no network. Real sockets and a real server's tickets, read
+	// as a client reads them: a second connection with the client's session
+	// cache resumes, a first one and one without the cache do not.
+	now := time.Now()
+	template := &x509.Certificate{SerialNumber: big.NewInt(912),
+		Subject: pkix.Name{CommonName: "owned.example"}, DNSNames: []string{"owned.example"},
+		NotBefore: now.Add(-time.Hour), NotAfter: now.Add(time.Hour),
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, BasicConstraintsValid: true, IsCA: true}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &testRSAPrivateKey.PublicKey, testRSAPrivateKey)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	for range 10 {
-		conn, err := Dial("tcp", "yahoo.com:443", config)
-		if err != nil {
-			t.Log("Dial error:", err)
-			continue
-		}
-		// Do a read to consume the NewSessionTicket messages.
-		fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: yahoo.com\r\nConnection: close\r\n\r\n")
-		conn.Read(make([]byte, 4096))
-		conn.Close()
-
-		conn, err = Dial("tcp", "yahoo.com:443", config)
-		if err != nil {
-			t.Log("second Dial error:", err)
-			continue
-		}
-		state := conn.ConnectionState()
-		conn.Close()
-
-		if state.DidResume {
-			return
-		}
+	certificate, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	t.Fatal("no connection used session resumption")
+	roots := x509.NewCertPool()
+	roots.AddCert(certificate)
+	for _, version := range []uint16{VersionTLS12, VersionTLS13} {
+		t.Run(VersionName(version), func(t *testing.T) {
+			ln, err := Listen("tcp", "127.0.0.1:0", &Config{MinVersion: version, MaxVersion: version,
+				Certificates: []Certificate{{Certificate: [][]byte{der}, PrivateKey: testRSAPrivateKey}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ln.Close()
+			served := make(chan error, 8)
+			go func() {
+				for {
+					conn, err := ln.Accept()
+					if err != nil {
+						return
+					}
+					go func() {
+						defer conn.Close()
+						_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+						// The request, to its blank line, then an answer.
+						request := make([]byte, 0, 256)
+						buf := make([]byte, 256)
+						for !bytes.Contains(request, []byte("\r\n\r\n")) {
+							n, err := conn.Read(buf)
+							if err != nil {
+								served <- err
+								return
+							}
+							request = append(request, buf[:n]...)
+						}
+						_, err := io.WriteString(conn, "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
+						served <- err
+					}()
+				}
+			}()
+			dial := func(config *Config) ConnectionState {
+				t.Helper()
+				conn, err := DialWithDialer(&net.Dialer{Timeout: 5 * time.Second}, "tcp", ln.Addr().String(), config)
+				if err != nil {
+					t.Fatal("Dial error:", err)
+				}
+				defer conn.Close()
+				_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+				fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: owned.example\r\nConnection: close\r\n\r\n")
+				// Read to the end: TLS 1.3's NewSessionTicket messages come
+				// after the handshake.
+				answer, err := io.ReadAll(conn)
+				if err != nil || !bytes.HasPrefix(answer, []byte("HTTP/1.1 204 ")) {
+					t.Fatalf("answer %q, %v", answer, err)
+				}
+				if err := <-served; err != nil {
+					t.Fatal("owned peer:", err)
+				}
+				return conn.ConnectionState()
+			}
+			cached := &Config{MinVersion: version, MaxVersion: version, ServerName: "owned.example",
+				RootCAs: roots, ClientSessionCache: NewLRUClientSessionCache(0)}
+			if dial(cached).DidResume {
+				t.Fatal("a first connection resumed a session it never had")
+			}
+			if !dial(cached).DidResume {
+				t.Fatal("no connection used session resumption")
+			}
+			uncached := cached.Clone()
+			uncached.ClientSessionCache = nil
+			dial(uncached)
+			if dial(uncached).DidResume {
+				t.Fatal("a connection without a session cache resumed")
+			}
+		})
+	}
 }
 
 func TestConnCloseBreakingWrite(t *testing.T) {

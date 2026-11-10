@@ -670,6 +670,13 @@ InsecureSkipVerify rejection, and add a typed wrong-name handshake control.
 No DNS/public endpoint or external-network skip remains. Production code and
 profile policy are unchanged; original denied-network failure is retained.
 
+`TestRealResumption`, upstream's since v1.8.2-barnius, dialed yahoo.com, which
+tls-forge's loopback-only F09 gate refuses. It resumes against an owned
+verified loopback peer instead, TLS 1.2 and TLS 1.3 each: a first connection
+does not resume, the second with the client's session cache does, one
+without the cache does not. The tickets are a real server's, read as a
+client reads them (TLS 1.3's after the handshake). Production is unchanged.
+
 ## Explicit GREASE extension payloads (pending engine 1 / A13)
 
 `UtlsGREASEExtension.BodySet` preserves profile-owned `Body` bytes in both
